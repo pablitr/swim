@@ -1,158 +1,152 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>SwimCoach Tracker</title>
-  
-  <!-- PWA & Meta Tags -->
-  <meta name="description" content="Local-first Progressive Web App for swimming coaches to track multiple swimmers, paces, and zones simultaneously.">
+  <title>SwimCoach</title>
+
+  <meta name="description" content="PWA local para entrenadores de natación. Múltiples cronómetros, zonas de entrenamiento y ritmo sostenible.">
   <meta name="theme-color" content="#0284c7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SwimCoach">
-  
+
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
-  
-  <!-- Stylesheets -->
+
   <link rel="stylesheet" href="css/reset.css">
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <!-- Header & Heat Controls -->
+
+  <!-- ===== ENCABEZADO COMPACTO ===== -->
   <header class="app-header">
-    <div class="header-top">
-      <div class="brand">
-        <svg class="brand-icon" viewBox="0 0 512 512" aria-hidden="true">
-          <circle cx="256" cy="276" r="160" stroke="#38bdf8" stroke-width="24" fill="#131d33"/>
-          <line x1="256" y1="276" x2="330" y2="202" stroke="#10b981" stroke-width="16" stroke-linecap="round"/>
-          <circle cx="256" cy="276" r="16" fill="#38bdf8"/>
-        </svg>
-        <h1 class="brand-title">
-          SwimCoach Tracker
-          <span class="brand-badge">PWA</span>
-        </h1>
-      </div>
-
-      <div class="header-status">
-        <div id="connection-status" class="status-indicator" title="Network status">
+    <div class="header-inner">
+      <h1 class="brand-title">SwimCoach</h1>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div id="connection-status" class="status-indicator" title="Estado de red">
           <span class="status-dot"></span>
-          <span id="connection-text">Online</span>
         </div>
+        <button id="btn-add-swimmer-trigger" class="btn-compact-add">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Añadir
+        </button>
       </div>
-    </div>
-
-    <!-- Master Heat Controls -->
-    <div class="master-controls" role="region" aria-label="Heat Master Controls">
-      <button id="btn-master-start" class="btn-master btn-start-all" title="Start all active swimmers">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-        Start All
-      </button>
-
-      <button id="btn-master-stop" class="btn-master btn-stop-all" title="Stop all running timers">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="5" y="5" width="14" height="14" rx="2"/>
-        </svg>
-        Stop All
-      </button>
-
-      <button id="btn-master-reset" class="btn-master btn-reset-all" title="Reset all timers to zero">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-          <path d="M3 3v5h5"/>
-        </svg>
-        Reset All
-      </button>
-
-      <button id="btn-add-swimmer-trigger" class="btn-master btn-add-swimmer" title="Add a new swimmer card">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        Add Swimmer
-      </button>
     </div>
   </header>
 
-  <!-- Main Grid Area -->
+  <!-- ===== CUADRÍCULA DE NADADORES ===== -->
   <main class="app-main">
     <div id="swimmer-grid" class="swimmer-grid" aria-live="polite">
-      <!-- Swimmer cards dynamically rendered here by ui/swimmer-card.js -->
+      <!-- Tarjetas renderizadas por JS -->
     </div>
   </main>
 
-  <!-- Add/Edit Swimmer Modal -->
+  <!-- ===== PIE: ESTADÍSTICAS GLOBALES ===== -->
+  <footer class="app-footer">
+    <button id="btn-global-stats" class="btn-global-stats">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+        <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+      </svg>
+      Ver Estadísticas Globales
+    </button>
+  </footer>
+
+  <!-- ===== MODAL: AÑADIR/EDITAR NADADOR ===== -->
   <div id="swimmer-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-header">
-        <h2 id="modal-title" class="modal-title">Add Swimmer</h2>
-        <button id="modal-close-btn" class="btn-icon" aria-label="Close modal">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
+        <h2 id="modal-title" class="modal-title">Añadir Nadador</h2>
+        <button id="modal-close-btn" class="btn-icon" aria-label="Cerrar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>
-
       <form id="swimmer-form" class="modal-body">
         <input type="hidden" id="swimmer-id-input" name="id">
-        
         <div class="form-group">
-          <label for="swimmer-name-input" class="form-label">Swimmer Name</label>
-          <input type="text" id="swimmer-name-input" name="name" class="form-input" placeholder="e.g. Alex Phelps" required autocomplete="off">
+          <label for="swimmer-name-input" class="form-label">Nombre del Nadador</label>
+          <input type="text" id="swimmer-name-input" name="name" class="form-input" placeholder="Ej. Alex García" required autocomplete="off">
         </div>
-
         <div class="form-group">
-          <label for="swimmer-lane-input" class="form-label">Lane Number</label>
-          <input type="number" id="swimmer-lane-input" name="lane" class="form-input" min="1" max="10" placeholder="1-10">
+          <label for="swimmer-lane-input" class="form-label">Número de Carril</label>
+          <input type="number" id="swimmer-lane-input" name="lane" class="form-input" min="1" max="10" placeholder="1–10">
         </div>
-
         <div class="form-group">
-          <label for="swimmer-baseline-input" class="form-label">Baseline 100m Time (seconds)</label>
-          <input type="number" id="swimmer-baseline-input" name="baseline100m" class="form-input" step="0.1" min="10" max="300" placeholder="e.g. 60.0">
-          <span style="font-size: var(--font-xs); color: var(--text-muted); margin-top: 4px;">
-            Used to calculate 75%, 80%, and 90% training zones.
-          </span>
+          <label for="swimmer-baseline-input" class="form-label">Mejor tiempo en 100m (segundos)</label>
+          <input type="number" id="swimmer-baseline-input" name="baseline100m" class="form-input" step="0.1" min="10" max="300" placeholder="Ej. 60.0">
+          <span style="font-size:12px;color:var(--text-muted);margin-top:3px;">Usado para calcular zonas al 75%, 80% y 90%.</span>
         </div>
-
         <div class="modal-footer">
-          <button type="button" id="modal-cancel-btn" class="btn-secondary">Cancel</button>
-          <button type="submit" id="modal-save-btn" class="btn-master btn-start-all">Save</button>
+          <button type="button" id="modal-cancel-btn" class="btn-secondary">Cancelar</button>
+          <button type="submit" id="modal-save-btn" class="btn-master btn-start-all">Guardar</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Service Worker Registration Script -->
+  <!-- ===== MODAL: MÉTRICAS INDIVIDUALES (LUPA) ===== -->
+  <div id="metrics-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-metrics">
+      <div class="modal-header">
+        <div class="metrics-swimmer-info">
+          <span id="metrics-modal-lane" class="card-lane-badge"></span>
+          <h2 id="metrics-modal-title" class="modal-title"></h2>
+        </div>
+        <button id="metrics-modal-close" class="btn-icon" aria-label="Cerrar métricas">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="metrics-modal-body" class="modal-body">
+        <!-- Contenido dinámico: zonas, métricas, boxplot, historial -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: ESTADÍSTICAS GLOBALES ===== -->
+  <div id="global-stats-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-stats">
+      <div class="modal-header">
+        <h2 class="modal-title">Estadísticas Globales</h2>
+        <button id="global-stats-close-btn" class="btn-icon" aria-label="Cerrar estadísticas">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="global-stats-content" class="modal-body">
+        <!-- Contenido dinámico desde app.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SERVICE WORKER ===== -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-          .then((reg) => {
-            console.log('[PWA] Service Worker registered with scope:', reg.scope);
-          })
-          .catch((err) => {
-            console.warn('[PWA] Service Worker registration failed:', err);
-          });
+          .then(r => console.log('[PWA] SW registrado:', r.scope))
+          .catch(e => console.warn('[PWA] SW falló:', e));
       });
     }
-
-    // Connection status listener
     function updateConnectionStatus() {
-      const statusEl = document.getElementById('connection-status');
-      const textEl = document.getElementById('connection-text');
-      if (!statusEl || !textEl) return;
+      const dot = document.querySelector('#connection-status .status-dot');
+      const el = document.getElementById('connection-status');
+      if (!el) return;
       if (navigator.onLine) {
-        statusEl.classList.remove('offline');
-        textEl.textContent = 'Online';
+        el.classList.remove('offline');
+        if (dot) dot.title = 'En línea';
       } else {
-        statusEl.classList.add('offline');
-        textEl.textContent = 'Offline';
+        el.classList.add('offline');
+        if (dot) dot.title = 'Sin conexión';
       }
     }
     window.addEventListener('online', updateConnectionStatus);
@@ -160,7 +154,6 @@
     updateConnectionStatus();
   </script>
 
-  <!-- ES Module Application Coordinator -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
