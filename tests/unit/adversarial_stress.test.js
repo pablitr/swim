@@ -9,6 +9,7 @@ import { calculateTrainingZones } from '../../js/analytics/zones.js';
 import { computeSustainablePace } from '../../js/analytics/pace-calculator.js';
 import { computeBoxplotStats } from '../../js/analytics/stats.js';
 import { renderBoxplotSVG } from '../../js/ui/boxplot-svg.js';
+import { Ticker } from '../../js/timing/ticker.js';
 
 describe('Adversarial Stress & Edge Case Test Suite', () => {
   let repo;
@@ -278,7 +279,7 @@ describe('Adversarial Stress & Edge Case Test Suite', () => {
       assert.deepStrictEqual(statsResult.outliers, []);
 
       const svg = renderBoxplotSVG([]);
-      assert.ok(svg.includes('No lap data recorded'));
+      assert.ok(svg.includes('Sin datos de pases registrados'));
       assert.ok(!svg.includes('NaN'));
     });
 
@@ -337,6 +338,105 @@ describe('Adversarial Stress & Edge Case Test Suite', () => {
       assert.throws(() => calculateTrainingZones(-60), /Invalid baseline/);
       assert.throws(() => calculateTrainingZones(NaN), /Invalid baseline/);
       assert.throws(() => calculateTrainingZones(Infinity), /Invalid baseline/);
+    });
+  });
+
+  // =========================================================================
+  // Challenge 5: Engine Optimization & Storage Batching (Milestone 1)
+  // =========================================================================
+  describe('Challenge 5: Engine Optimization & Storage Batching', () => {
+    test('TC-ADV-501: saveLapAndTimerState commits both records atomically in single transaction', async () => {
+      const swimmerId = 'swim-dual-01';
+      await repo.saveSwimmer({ id: swimmerId, name: 'Dual Swimmer', lane: 1, baseline100mSeconds: 60 });
+
+      const lap = {
+        id: 'lap-dual-1',
+        swimmerId,
+        lapNumber: 1,
+        splitDurationMs: 45000,
+        cumulativeDurationMs: 45000,
+        timestamp: Date.now()
+      };
+
+      const state = {
+        swimmerId,
+        state: TIMER_STATES.RUNNING,
+        accumulatedMs: 45000,
+        currentLapIndex: 2,
+        lastLapCumulativeMs: 45000,
+        lastResumeTime: Date.now()
+      };
+
+      await repo.saveLapAndTimerState(lap, state);
+
+      const savedLaps = await repo.getLaps(swimmerId);
+      assert.strictEqual(savedLaps.length, 1);
+      assert.strictEqual(savedLaps[0].splitDurationMs, 45000);
+
+      const savedState = await repo.getTimerState(swimmerId);
+      assert.strictEqual(savedState.currentLapIndex, 2);
+      assert.strictEqual(savedState.lastLapCumulativeMs, 45000);
+
+      // Validation tests
+      await assert.rejects(async () => {
+        await repo.saveLapAndTimerState(null, state);
+      }, /Invalid lap object/);
+
+      await assert.rejects(async () => {
+        await repo.saveLapAndTimerState(lap, null);
+      }, /Invalid timer state object/);
+    });
+
+    test('TC-ADV-502: TimerEngine.recordLap calls saveLapAndTimerState under real execution', async () => {
+      const swimmerId = 'swim-dual-02';
+      await repo.saveSwimmer({ id: swimmerId, name: 'Engine Dual Swimmer', lane: 2, baseline100mSeconds: 58 });
+
+      await engine.start(swimmerId);
+      await new Promise(r => setTimeout(r, 20));
+
+      const { lap, state } = await engine.recordLap(swimmerId);
+      assert.strictEqual(lap.lapNumber, 1);
+      assert.ok(lap.splitDurationMs > 0);
+      assert.strictEqual(state.currentLapIndex, 2);
+
+      const persistentState = await repo.getTimerState(swimmerId);
+      assert.strictEqual(persistentState.currentLapIndex, 2);
+
+      const persistentLaps = await repo.getLaps(swimmerId);
+      assert.strictEqual(persistentLaps.length, 1);
+      assert.strictEqual(persistentLaps[0].lapNumber, 1);
+    });
+
+    test('TC-ADV-503: Ticker frame rate throttling skips redundant frames on high refresh displays', () => {
+      const customTicker = new Ticker(60); // 60 FPS = ~16.6ms interval
+      let tickCount = 0;
+      const callback = () => { tickCount++; };
+
+      customTicker.subscribe('test-sub', callback);
+      customTicker.isRunning = true;
+
+      // First tick at t=100
+      customTicker._tick(100);
+      assert.strictEqual(tickCount, 1, 'First tick must execute');
+
+      // Immediate tick at t=105 (elapsed 5ms < 14ms threshold) -> should throttle/skip
+      customTicker._tick(105);
+      assert.strictEqual(tickCount, 1, 'Tick within frame interval must be throttled');
+
+      // Next tick at t=118 (elapsed 18ms >= 14ms) -> should execute
+      customTicker._tick(118);
+      assert.strictEqual(tickCount, 2, 'Tick after frame interval must execute');
+
+      // Another rapid tick at t=125 (elapsed 7ms < 14ms) -> should throttle
+      customTicker._tick(125);
+      assert.strictEqual(tickCount, 2, 'Subsequent rapid tick must be throttled');
+
+      // Frame at t=135 (elapsed 17ms >= 14ms) -> should execute
+      customTicker._tick(135);
+      assert.strictEqual(tickCount, 3, 'Subsequent valid frame must execute');
+
+      customTicker.stop();
+      assert.strictEqual(customTicker.lastFrameTime, 0, 'Stopping resets lastFrameTime');
     });
   });
 });

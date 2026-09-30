@@ -289,8 +289,12 @@ export class TimerEngine {
     state.currentLapIndex = lapNumber + 1;
     state.lastLapCumulativeMs = currentCumulativeMs;
 
-    await this.repository.saveLap(lap);
-    await this.repository.saveTimerState(state);
+    if (typeof this.repository.saveLapAndTimerState === 'function') {
+      await this.repository.saveLapAndTimerState(lap, state);
+    } else {
+      await this.repository.saveLap(lap);
+      await this.repository.saveTimerState(state);
+    }
 
     return {
       lap,

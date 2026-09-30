@@ -7,16 +7,16 @@ describe('Boxplot Pure SVG Visualizer Unit Tests', () => {
   test('renders empty state SVG when laps array is empty', () => {
     const svg = renderBoxplotSVG([]);
     assert.ok(svg.includes('<svg viewBox="0 0 300 80"'), 'Should render svg with 300 80 viewBox');
-    assert.ok(svg.includes('No lap data recorded'), 'Should contain empty state message');
+    assert.ok(svg.includes('Sin datos de pases registrados'), 'Should contain empty state message');
     assert.ok(!svg.includes('<circle'), 'Should not contain circles');
   });
 
   test('renders empty state SVG when laps is null or invalid', () => {
     const svgNull = renderBoxplotSVG(null);
-    assert.ok(svgNull.includes('No lap data recorded'));
+    assert.ok(svgNull.includes('Sin datos de pases registrados'));
 
     const svgInvalid = renderBoxplotSVG(['not-a-number']);
-    assert.ok(svgInvalid.includes('No valid lap times'));
+    assert.ok(svgInvalid.includes('Sin tiempos de pase válidos'));
   });
 
   test('renders boxplot elements for standard laps dataset', () => {

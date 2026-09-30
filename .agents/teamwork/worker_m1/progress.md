@@ -1,13 +1,15 @@
-# Progress Tracker - Worker M1 (PWA Shell & Storage Engine)
+# Progress Tracker - Worker M1 (Engine Optimization & 100% Spanish Localization)
 
-Last visited: 2026-09-30T15:05:00Z
+Last visited: 2026-09-30T20:08:00Z
 Status: Completed
 
 ## Tasks
-- [x] 1. Icons & PWA Web App Manifest (`manifest.json`, `icons/`)
-- [x] 2. Service Worker (`sw.js`) with cache-first and skipWaiting/claim
-- [x] 3. Poolside High-Contrast CSS Theme (`css/reset.css`, `css/variables.css`, `css/styles.css`)
-- [x] 4. Shell HTML (`index.html`) with PWA meta tags, service worker registration, card grid, controls
-- [x] 5. IndexedDB Storage Wrapper (`js/storage/db.js`)
-- [x] 6. SwimmerRepository Implementation (`js/storage/repository.js`)
-- [x] 7. Verification & Testing (19/19 storage tests passing + standalone verification passed)
+- [x] 1. Copy proposed_verify_spanish.js to tests/verify_spanish.js
+- [x] 2. Localize manifest.json description to Spanish
+- [x] 3. Localize js/ui/boxplot-svg.js empty states & aria-labels to Spanish
+- [x] 4. Localize timer states in js/app.js (showGlobalStats)
+- [x] 5. Update unit test assertions in tests/unit/boxplot.test.js & tests/unit/adversarial_stress.test.js
+- [x] 6. Implement frame rate throttling in js/timing/ticker.js
+- [x] 7. Implement atomic dual-write storage batching saveLapAndTimerState in js/storage/repository.js & use it in js/timing/timer-engine.js
+- [x] 8. Verify all checks: verify_spanish.js, verify_acceptance.js, unit tests
+- [x] 9. Write handoff report and notify parent

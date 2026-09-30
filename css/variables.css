@@ -2,23 +2,23 @@
 /* High-Contrast Poolside Palette: Outdoor Sunlight Legibility (WCAG AAA/AA) */
 
 :root {
-  /* Surface Colors */
-  --bg-app: #060b14;
-  --bg-surface: #0d1527;
-  --bg-surface-elevated: #14223d;
-  --bg-surface-highlight: #1b2e52;
-  --bg-overlay: rgba(6, 11, 20, 0.85);
+  /* Surface Colors - High contrast deep water base */
+  --bg-app: #070d18;              /* Deep oceanic navy */
+  --bg-surface: #0e172a;          /* Card baseline */
+  --bg-surface-elevated: #162238; /* Container / Sub-panel */
+  --bg-surface-highlight: #1e304f;/* Hover & active */
+  --bg-overlay: rgba(5, 10, 20, 0.88);
 
-  /* Borders & Dividers */
-  --border-subtle: #1e3156;
-  --border-default: #2a4374;
-  --border-strong: #38bdf8;
-  --border-focus: #00f0ff;
+  /* High-Contrast Borders (Visible in bright sunlight) */
+  --border-subtle: #24385a;
+  --border-default: #3b537d;      /* 4.5:1 against bg-app */
+  --border-strong: #38bdf8;       /* Bright cyan */
+  --border-focus: #00f0ff;        /* Neon electric cyan */
 
-  /* Text & Content */
-  --text-primary: #ffffff;
-  --text-secondary: #e2e8f0;
-  --text-muted: #94a3b8;
+  /* Text Typography (WCAG AAA >= 7:1) */
+  --text-primary: #ffffff;        /* Pure white (21:1 on bg-app) */
+  --text-secondary: #e2e8f0;      /* 12:1 on bg-app */
+  --text-muted: #94a3b8;          /* 6.5:1 on bg-app */
   --text-dim: #64748b;
   --text-inverse: #060b14;
 
@@ -28,25 +28,27 @@
   --color-pool-bright: #38bdf8;
   --color-pool-glow: #00f0ff;
 
-  /* Stopwatch & Action Colors (Min 4.5:1 / 7:1 Contrast) */
-  --color-start: #10b981;
+  /* Action Buttons (Glaring Sunlight Tuned) */
+  --color-start: #10b981;         /* Emerald Green */
   --color-start-hover: #059669;
   --color-start-active: #047857;
-  --color-start-glow: rgba(16, 185, 129, 0.35);
+  --color-start-glow: rgba(16, 185, 129, 0.4);
 
-  --color-stop: #ef4444;
+  --color-stop: #ef4444;          /* Vivid Crimson */
   --color-stop-hover: #dc2626;
   --color-stop-active: #b91c1c;
-  --color-stop-glow: rgba(239, 68, 68, 0.35);
+  --color-stop-glow: rgba(239, 68, 68, 0.4);
 
-  --color-lap: #f59e0b;
-  --color-lap-hover: #d97706;
-  --color-lap-active: #b45309;
-  --color-lap-glow: rgba(245, 158, 11, 0.35);
+  --color-lap: #facc15;           /* Bright gold (Yellow 400) */
+  --color-lap-hover: #eab308;
+  --color-lap-active: #ca8a04;
+  --color-lap-text: #060b14;      /* Pure dark navy on bright gold (12.87:1 contrast > 11:1) */
+  --color-lap-glow: rgba(250, 204, 21, 0.4);
 
-  --color-reset: #64748b;
-  --color-reset-hover: #475569;
-  --color-reset-active: #334155;
+  --color-reset: #475569;         /* Slate */
+  --color-reset-hover: #334155;
+  --color-reset-active: #1e293b;
+  --color-reset-text: #f8fafc;
 
   /* Zone Colors */
   --color-zone-75: #38bdf8;
@@ -69,9 +71,13 @@
   --font-3xl: 2rem;       /* 32px */
   --font-display: 2.75rem;/* 44px */
 
-  /* Touch Targets (Poolside wet-finger compliance: >= 48px) */
-  --touch-target-min: 48px;
-  --touch-target-large: 56px;
+  /* Touch Ergonomics (Wet finger minimum targets) */
+  --touch-target-min: 44px;
+  --touch-target-large: 50px;
+
+  /* Layout Density */
+  --grid-card-min-width: 280px;
+  --card-padding: 12px;
 
   /* Spacing */
   --space-1: 0.25rem; /* 4px */

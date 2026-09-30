@@ -1,7 +1,7 @@
 {
   "name": "SwimCoach Tracker",
   "short_name": "SwimCoach",
-  "description": "Local-first multi-swimmer timing, sustainable pace and training zone analytics PWA",
+  "description": "PWA local para cronometraje simultáneo de nadadores, ritmo sostenible y análisis de zonas de entrenamiento",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

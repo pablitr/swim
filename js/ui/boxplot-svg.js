@@ -33,19 +33,19 @@ export function renderBoxplotSVG(lapsSeconds, options = {}) {
   const className = options.className || 'boxplot-svg';
   const showLabels = options.showLabels !== false;
 
-  // Empty state handling
+  // Manejo de estado vacío
   if (!Array.isArray(lapsSeconds) || lapsSeconds.length === 0) {
-    return `<svg viewBox="0 0 ${width} ${height}" class="${className}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Boxplot: No lap data available">
+    return `<svg viewBox="0 0 ${width} ${height}" class="${className}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de caja: Sin datos de pases disponibles">
   <rect width="${width}" height="${height}" fill="transparent" />
-  <text x="${width / 2}" y="${height / 2 + 4}" text-anchor="middle" fill="var(--text-muted, #94a3b8)" font-size="12" font-family="var(--font-sans, sans-serif)">No lap data recorded</text>
+  <text x="${width / 2}" y="${height / 2 + 4}" text-anchor="middle" fill="var(--text-muted, #94a3b8)" font-size="12" font-family="var(--font-sans, sans-serif)">Sin datos de pases registrados</text>
 </svg>`;
   }
 
   const stats = computeBoxplotStats(lapsSeconds);
   if (stats.count === 0 || stats.min === null) {
-    return `<svg viewBox="0 0 ${width} ${height}" class="${className}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Boxplot: No valid lap data">
+    return `<svg viewBox="0 0 ${width} ${height}" class="${className}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de caja: Sin datos de pases válidos">
   <rect width="${width}" height="${height}" fill="transparent" />
-  <text x="${width / 2}" y="${height / 2 + 4}" text-anchor="middle" fill="var(--text-muted, #94a3b8)" font-size="12" font-family="var(--font-sans, sans-serif)">No valid lap times</text>
+  <text x="${width / 2}" y="${height / 2 + 4}" text-anchor="middle" fill="var(--text-muted, #94a3b8)" font-size="12" font-family="var(--font-sans, sans-serif)">Sin tiempos de pase válidos</text>
 </svg>`;
   }
 
@@ -168,7 +168,7 @@ export function renderBoxplotSVG(lapsSeconds, options = {}) {
     );
   }
 
-  return `<svg viewBox="0 0 ${width} ${height}" class="${className}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Boxplot of ${stats.count} laps (Median: ${stats.median}s)">
+  return `<svg viewBox="0 0 ${width} ${height}" class="${className}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de caja de ${stats.count} pases (Mediana: ${stats.median}s)">
   ${elements.join('\n  ')}
 </svg>`;
 }

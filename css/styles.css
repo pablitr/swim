@@ -12,105 +12,96 @@ body {
   min-height: 100vh;
 }
 
-/* App Header - Ultra Compact to maximize vertical screen space */
+/* App Header - Ultra Compact 40px fixed bar layout (Requirement R2) */
 .app-header {
   background-color: var(--bg-surface);
   border-bottom: 1px solid var(--border-default);
-  padding: var(--space-2) var(--space-4);
+  padding: env(safe-area-inset-top, 0px) var(--space-3) 0 var(--space-3);
+  height: 40px;
+  display: flex;
+  align-items: center;
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
 }
 
 .header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   max-width: 1600px;
   margin: 0 auto;
-  gap: var(--space-3);
-  min-height: 36px;
+  height: 40px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .brand-icon {
-  width: 28px;
-  height: 28px;
-  filter: drop-shadow(0 0 4px var(--color-pool-glow));
+  width: 18px;
+  height: 18px;
+  color: var(--color-pool-bright);
+  flex-shrink: 0;
 }
 
 .brand-title {
-  font-size: var(--font-base);
+  font-size: 0.95rem; /* ~15px */
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
   margin: 0;
-}
-
-.brand-badge {
-  font-size: 10px;
-  text-transform: uppercase;
-  background-color: var(--color-pool-deep);
-  color: #ffffff;
-  padding: 1px 6px;
-  border-radius: var(--radius-full);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
 }
 
 .status-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: var(--font-xs);
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
-  background-color: var(--bg-surface-elevated);
+  justify-content: center;
 }
 
 .status-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background-color: var(--color-start);
   box-shadow: 0 0 6px var(--color-start);
+  display: inline-block;
+  margin-left: 4px;
 }
 
-.status-indicator.offline .status-dot {
-  background-color: var(--color-lap);
-  box-shadow: 0 0 6px var(--color-lap);
+.status-indicator.offline .status-dot,
+.status-dot.offline {
+  background-color: var(--color-stop);
+  box-shadow: 0 0 6px var(--color-stop);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .btn-compact-add {
-  min-height: 34px;
-  padding: 0 var(--space-3);
+  height: 28px;
+  padding: 0 10px;
   font-size: var(--font-xs);
   font-weight: 700;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background-color: var(--color-pool-deep);
   border: 1px solid var(--color-pool-bright);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   cursor: pointer;
+  touch-action: manipulation;
   transition: background-color var(--transition-fast), transform var(--transition-fast);
 }
 
@@ -137,26 +128,25 @@ body {
   box-sizing: border-box;
 }
 
-/* Dense Swimmer Grid (R2 Acceptance Criteria) */
+/* Swimmer Grid (High-Contrast Poolside Layout) */
 .swimmer-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(var(--grid-card-min-width, 280px), 1fr));
   gap: var(--space-3);
 }
 
-/* Dense Swimmer Card */
+/* Swimmer Card with CSS Containment (Requirements R3, R5, R6) */
 .swimmer-card {
+  contain: layout paint;
   background-color: var(--bg-surface);
   border: 2px solid var(--border-default);
   border-radius: var(--radius-md);
-  padding: var(--space-2);
+  padding: var(--card-padding, 12px);
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   position: relative;
-  min-height: 140px;
-  height: 155px;
   box-sizing: border-box;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
@@ -171,59 +161,22 @@ body {
   box-shadow: 0 0 12px var(--color-lap-glow);
 }
 
-/* Top Corner Bar of Swimmer Card */
-.card-corner-bar {
+/* Card Header: Swimmer Info and Metrics Lupa */
+.card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
-  height: 32px;
-  flex-shrink: 0;
-}
-
-.btn-card-corner {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background-color: var(--bg-surface-elevated);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background-color var(--transition-fast), transform var(--transition-fast), color var(--transition-fast);
-}
-
-.btn-card-corner:hover {
-  background-color: var(--bg-surface-highlight);
-}
-
-.btn-card-corner:active {
-  transform: scale(0.92);
-}
-
-.btn-corner-start {
-  color: var(--color-start);
-}
-
-.btn-corner-start.is-running {
-  color: var(--color-lap);
-}
-
-.btn-corner-lupa {
-  color: var(--color-pool-bright);
+  gap: 8px;
+  min-height: 32px;
 }
 
 .card-swimmer-info {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
-  justify-content: center;
   overflow: hidden;
-  padding: 0 2px;
 }
 
 .card-lane-badge {
@@ -231,14 +184,14 @@ body {
   font-weight: 800;
   color: var(--color-pool-bright);
   background-color: var(--bg-surface-elevated);
-  padding: 2px 5px;
+  padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .card-swimmer-name {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
   white-space: nowrap;
@@ -247,83 +200,286 @@ body {
   margin: 0;
 }
 
-/* Giant "Lap (Pase)" Body Button */
-.card-lap-body {
-  flex: 1;
-  width: 100%;
+.btn-card-lupa {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-pool-bright);
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), transform 0.06s ease;
+}
+
+.btn-card-lupa:hover {
+  background-color: var(--bg-surface-highlight);
+  border-color: var(--color-pool-bright);
+}
+
+.btn-card-lupa:active {
+  transform: scale(0.96);
+}
+
+/* Card Timer Section: Zero text-shadow for 60fps render performance */
+.card-timer-section {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #000000;
-  border: 2px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 4px 6px;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast), transform 0.06s ease;
-  box-sizing: border-box;
-}
-
-.swimmer-card.running .card-lap-body {
-  border-color: rgba(16, 185, 129, 0.4);
-  background: linear-gradient(180deg, #03141f 0%, #020912 100%);
-}
-
-.card-lap-body:active,
-.card-lap-body.tap-active {
-  transform: scale(0.96);
-  background-color: rgba(16, 185, 129, 0.35) !important;
+  padding: 2px 0;
 }
 
 .stopwatch-time {
+  contain: strict;
   font-family: var(--font-mono);
-  font-size: 1.55rem;
+  font-size: 2.2rem;
   font-weight: 900;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
-  line-height: 1;
-  text-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+  line-height: 1.1;
+  margin: 0;
 }
 
 .swimmer-card.running .stopwatch-time {
-  color: #a7f3d0;
-  text-shadow: 0 0 12px var(--color-start-glow);
+  color: #10b981;
 }
 
 .swimmer-card.paused .stopwatch-time {
-  color: #fde68a;
-  text-shadow: 0 0 10px var(--color-lap-glow);
+  color: #f59e0b;
 }
 
-.lap-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.lap-text {
-  font-size: 11px;
+.timer-state-label {
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.swimmer-card.running .timer-state-label {
+  color: var(--color-start);
+}
+
+.swimmer-card.paused .timer-state-label {
   color: var(--color-lap);
 }
 
-.lap-badge {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  font-weight: 700;
+/* 3-Row Recent Laps Container (Zero CLS layout) */
+.card-recent-laps {
+  contain: strict;
+  min-height: 72px;
   background-color: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  box-sizing: border-box;
+}
+
+.recent-laps-header {
+  display: none;
+}
+
+.recent-laps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  justify-content: space-around;
+}
+
+.recent-lap-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
   color: var(--text-secondary);
-  padding: 1px 6px;
+}
+
+.recent-lap-row .lap-num {
+  font-weight: 700;
+  color: var(--color-pool-bright);
+  width: 28px;
+}
+
+.recent-lap-row .lap-split {
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  flex: 1;
+}
+
+.recent-lap-row .lap-cum {
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: right;
+  width: 68px;
+}
+
+.recent-lap-row.placeholder {
+  color: var(--text-dim);
+  opacity: 0.4;
+}
+
+.recent-lap-row.placeholder .lap-num,
+.recent-lap-row.placeholder .lap-split,
+.recent-lap-row.placeholder .lap-cum {
+  color: var(--text-dim);
+}
+
+/* Primary Giant Pase Button (High-Contrast Amber with dark text) */
+.btn-card-lap {
+  width: 100%;
+  min-height: 48px;
+  background-color: var(--color-lap);
+  color: var(--color-lap-text, #060b14);
+  border: 2px solid var(--color-lap-hover);
+  border-radius: var(--radius-md);
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--transition-fast), transform 0.06s ease, box-shadow var(--transition-fast);
+  user-select: none;
+  -webkit-user-select: none;
+  box-shadow: 0 2px 8px var(--color-lap-glow);
+  box-sizing: border-box;
+}
+
+.btn-card-lap:hover:not(:disabled) {
+  background-color: var(--color-lap-hover);
+}
+
+.btn-card-lap:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-card-lap:disabled {
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-dim);
+  border-color: var(--border-subtle);
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+.lap-btn-text {
+  font-weight: 900;
+}
+
+.lap-btn-counter {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px 6px;
   border-radius: 4px;
+}
+
+/* Actions Toolbar: Iniciar/Pausar, Detener, Reiniciar */
+.card-actions-toolbar {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.btn-card-action {
+  flex: 1;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--transition-fast), transform 0.06s ease, border-color var(--transition-fast);
+  user-select: none;
+  -webkit-user-select: none;
+  box-sizing: border-box;
+}
+
+.btn-card-action:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.btn-card-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--border-subtle);
+  background-color: var(--bg-surface-elevated) !important;
+  color: var(--text-dim) !important;
+}
+
+.btn-card-start {
+  background-color: var(--color-start);
+  color: var(--color-lap-text, #060b14);
+  border-color: var(--color-start-hover);
+}
+
+.btn-card-start svg {
+  fill: currentColor;
+}
+
+.btn-card-start:hover:not(:disabled) {
+  background-color: var(--color-start-hover);
+}
+
+.btn-card-start.is-running {
+  background-color: var(--color-lap);
+  color: var(--color-lap-text, #060b14);
+  border-color: var(--color-lap-hover);
+}
+
+.btn-card-start.is-running:hover:not(:disabled) {
+  background-color: var(--color-lap-hover);
+}
+
+.btn-card-start.is-paused {
+  background-color: var(--color-start);
+  color: var(--color-lap-text, #060b14);
+  border-color: var(--color-start-hover);
+}
+
+.btn-card-stop {
+  background-color: var(--color-stop);
+  color: #ffffff;
+  border-color: var(--color-stop-hover);
+}
+
+.btn-card-stop:hover:not(:disabled) {
+  background-color: var(--color-stop-hover);
+}
+
+.btn-card-reset {
+  background-color: var(--color-reset);
+  color: var(--color-reset-text, #f8fafc);
+  border-color: var(--color-reset-hover);
+}
+
+.btn-card-reset:hover:not(:disabled) {
+  background-color: var(--color-reset-hover);
 }
 
 /* Page Footer - Bottom Button "Ver Estadísticas Globales" (R1) */
@@ -376,7 +532,6 @@ body {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-fast);
-  backdrop-filter: blur(4px);
 }
 
 .modal-overlay.open {

@@ -142,6 +142,59 @@ export class SwimmerRepository {
   }
 
   /**
+   * Atomically save a lap and update timer state in a single dual-write transaction
+   * @param {Object} lap - Lap object
+   * @param {Object} state - Timer state object
+   * @returns {Promise<void>}
+   */
+  async saveLapAndTimerState(lap, state) {
+    if (!lap || typeof lap !== 'object') {
+      throw new Error('Invalid lap object provided');
+    }
+    if (!lap.swimmerId) {
+      throw new Error('Lap missing swimmerId');
+    }
+    if (!lap.id) {
+      lap.id = `lap-${lap.swimmerId}-${lap.lapNumber || Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    }
+    if (lap.timestamp === undefined) {
+      lap.timestamp = Date.now();
+    }
+
+    if (!state || typeof state !== 'object') {
+      throw new Error('Invalid timer state object provided');
+    }
+    if (!state.swimmerId) {
+      throw new Error('Timer state missing swimmerId');
+    }
+
+    const db = await openDB();
+    if (typeof db.transaction !== 'function') {
+      // MemoryDatabase fallback (CLI / Node without IDB)
+      db.getStore(STORES.LAPS).put(lap);
+      db.getStore(STORES.TIMER_STATES).put(state);
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORES.LAPS, STORES.TIMER_STATES], 'readwrite');
+      const lapStore = tx.objectStore(STORES.LAPS);
+      const timerStore = tx.objectStore(STORES.TIMER_STATES);
+
+      lapStore.put(lap);
+      timerStore.put(state);
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+
+      if (typeof tx.commit === 'function') {
+        tx.commit();
+      }
+    });
+  }
+
+  /**
    * Delete a single lap by ID
    * @param {string} lapId
    * @returns {Promise<void>}

@@ -7,6 +7,13 @@ import { SwimmerCard } from './ui/swimmer-card.js';
 import { modalManager } from './ui/modal.js';
 import { computeSustainablePace } from './analytics/pace-calculator.js';
 
+const TIMER_STATE_LABELS_ES = {
+  [TIMER_STATES.IDLE]: 'Listo',
+  [TIMER_STATES.RUNNING]: 'En curso',
+  [TIMER_STATES.PAUSED]: 'Pausado',
+  [TIMER_STATES.STOPPED]: 'Detenido'
+};
+
 class AppCoordinator {
   constructor() {
     this.cards = new Map();
@@ -167,7 +174,7 @@ class AppCoordinator {
         <tr>
           <td><strong>C${swimmer.lane ?? '-'}</strong></td>
           <td>${card._escapeHtml(swimmer.name)}</td>
-          <td><span class="status-indicator">${card.timerState.state}</span></td>
+          <td><span class="status-indicator">${TIMER_STATE_LABELS_ES[card.timerState.state] || card.timerState.state}</span></td>
           <td>${laps.length}</td>
           <td>${best}</td>
           <td>${paceStr}</td>

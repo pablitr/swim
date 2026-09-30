@@ -16,6 +16,7 @@ class MockElement {
     this._innerHTML = '';
     this._textContent = '';
     this.disabled = false;
+    this.title = '';
   }
 
   get classList() {
@@ -53,6 +54,17 @@ class MockElement {
     this._textContent = String(text);
   }
 
+  setAttribute(name, val) {
+    this[name] = val;
+    if (name === 'id') this.id = val;
+    if (name === 'class') this.className = val;
+    if (name === 'disabled') this.disabled = Boolean(val);
+  }
+
+  getAttribute(name) {
+    return this[name] ?? null;
+  }
+
   appendChild(child) {
     child.parentNode = this;
     this.children.push(child);
@@ -74,7 +86,7 @@ class MockElement {
   }
 
   dispatchEvent(event) {
-    const fns = this._listeners[event.type] || [];
+    const fns = this._listeners[event.type || event] || [];
     for (const fn of fns) fn(event);
   }
 
@@ -88,6 +100,24 @@ class MockElement {
       return this._find(el => el.classList.contains(cls));
     }
     return this._find(el => el.tagName.toLowerCase() === sel.toLowerCase());
+  }
+
+  querySelectorAll(sel) {
+    const matches = [];
+    const collect = (el) => {
+      for (const child of el.children) {
+        if (sel.startsWith('.')) {
+          if (child.classList.contains(sel.slice(1))) matches.push(child);
+        } else if (sel.startsWith('#')) {
+          if (child.id === sel.slice(1)) matches.push(child);
+        } else if (child.tagName.toLowerCase() === sel.toLowerCase()) {
+          matches.push(child);
+        }
+        collect(child);
+      }
+    };
+    collect(this);
+    return matches;
   }
 
   _find(predicate) {
@@ -113,20 +143,21 @@ function parseHtmlToMockElements(html, parent) {
     if (idMatch) el.id = idMatch[1];
     const classMatch = attrs.match(/class=["']([^"']+)["']/);
     if (classMatch) el.className = classMatch[1];
+    if (attrs.includes('disabled')) el.disabled = true;
     elements.push(el);
   }
   return elements;
 }
 
 import { SwimmerCard } from '../../js/ui/swimmer-card.js';
-import { calculateTrainingZones } from '../../js/analytics/zones.js';
-import { computeSustainablePace } from '../../js/analytics/pace-calculator.js';
+import { timerEngine, TIMER_STATES } from '../../js/timing/timer-engine.js';
+import { repository } from '../../js/storage/repository.js';
 
-describe('SwimmerCard UI Component Unit Tests', () => {
+describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', () => {
   let originalDocument;
   let originalConfirm;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     originalDocument = globalThis.document;
     originalConfirm = globalThis.confirm;
     globalThis.document = {
@@ -134,6 +165,9 @@ describe('SwimmerCard UI Component Unit Tests', () => {
       getElementById: (id) => null
     };
     globalThis.confirm = () => true;
+
+    await repository.init();
+    await repository.clearAll();
   });
 
   afterEach(() => {
@@ -151,94 +185,184 @@ describe('SwimmerCard UI Component Unit Tests', () => {
 
   const swimmer = {
     id: 'swimmer-card-test',
-    name: 'Michael Phelps',
+    name: 'Alex García',
     lane: 4,
     baseline100mSeconds: 60.0
   };
 
-  test('TC-SC-101: render() computes training zones via calculateTrainingZones and includes Pace (Mode) box', () => {
+  test('TC-SC-201: render() builds card with cached DOM nodes and initial IDLE state', () => {
     const card = new SwimmerCard({ swimmer });
     const el = card.render();
 
-    // Verify Zones calculated via calculateTrainingZones (60s baseline: 75% = 80.0s, 80% = 75.0s, 90% = 66.7s)
-    const expectedZones = calculateTrainingZones(60.0);
-    assert.strictEqual(expectedZones.zone75, 80.0);
-    assert.strictEqual(expectedZones.zone80, 75.0);
+    assert.strictEqual(el.id, `card-${swimmer.id}`);
+    assert.strictEqual(el.dataset.swimmerId, swimmer.id);
 
-    assert.ok(el.innerHTML.includes('80.0s'), 'Must display 75% zone as 80.0s');
-    assert.ok(el.innerHTML.includes('75.0s'), 'Must display 80% zone as 75.0s');
-    assert.ok(el.innerHTML.includes('66.7s'), 'Must display 90% zone as 66.7s');
+    // Verify all critical DOM nodes are properly cached
+    assert.ok(card._timeEl, 'card._timeEl must be cached');
+    assert.ok(card._stateLabelEl, 'card._stateLabelEl must be cached');
+    assert.ok(card._recentLapsListEl, 'card._recentLapsListEl must be cached');
+    assert.ok(card._lapBtnEl, 'card._lapBtnEl must be cached');
+    assert.ok(card._lapCountEl, 'card._lapCountEl must be cached');
+    assert.ok(card._btnStartEl, 'card._btnStartEl must be cached');
+    assert.ok(card._btnStopEl, 'card._btnStopEl must be cached');
+    assert.ok(card._btnResetEl, 'card._btnResetEl must be cached');
 
-    // Anti-regression: verify naive multiplication 45s is NOT present
-    assert.ok(!el.innerHTML.includes('45.0s</span></span>'), 'Anti-regression: 75% zone must NOT be 45s');
+    // Initial values
+    assert.strictEqual(card._timeEl.textContent, '00:00.00');
+    assert.strictEqual(card._stateLabelEl.textContent, 'LISTO');
+    assert.strictEqual(card._lapCountEl.textContent, 'V1');
 
-    // Verify 4th metric box exists
-    const paceEl = el.querySelector(`#metric-pace-${swimmer.id}`);
-    assert.ok(paceEl, 'Must render metric-pace element');
-    assert.strictEqual(paceEl.textContent, '--', 'Initial pace metric must be --');
+    // Initial button states
+    assert.strictEqual(card._lapBtnEl.disabled, true, 'Lap button must be disabled in IDLE');
+    assert.strictEqual(card._btnStopEl.disabled, true, 'Stop button must be disabled in IDLE');
+    assert.strictEqual(card._btnResetEl.disabled, true, 'Reset button must be disabled with zero elapsed time');
+    assert.strictEqual(card._btnStartEl.disabled, false, 'Start button must be enabled in IDLE');
+    assert.ok(card._btnStartEl.innerHTML.includes('Iniciar'), 'Start button must display "Iniciar" in IDLE');
   });
 
-  test('TC-SC-102: updateMetrics() and updateLapsTable() wire sustainable pace and outlier flags for [45, 45, 46, 60]', () => {
+  test('TC-SC-202: _updateRecentLaps() displays exactly 3 rows in reverse order with placeholders', () => {
     const card = new SwimmerCard({ swimmer });
-    const el = card.render();
+    card.render();
 
-    // Add laps: [45s, 45s, 46s, 60s (outlier)]
+    // 1. Initial empty state: 3 placeholder rows
+    assert.ok(card._recentLapsListEl.innerHTML.includes('placeholder'));
+    assert.ok(card._recentLapsListEl.innerHTML.includes('V-'));
+
+    // 2. Add 1 lap
     card.laps = [
-      { lapNumber: 1, splitDurationMs: 45000, cumulativeDurationMs: 45000, timestamp: 1000 },
-      { lapNumber: 2, splitDurationMs: 45000, cumulativeDurationMs: 90000, timestamp: 2000 },
-      { lapNumber: 3, splitDurationMs: 46000, cumulativeDurationMs: 136000, timestamp: 3000 },
-      { lapNumber: 4, splitDurationMs: 60000, cumulativeDurationMs: 196000, timestamp: 4000 }
+      { lapNumber: 1, splitDurationMs: 45000, cumulativeDurationMs: 45000 }
     ];
+    card._updateRecentLaps();
 
-    card.updateMetrics();
-    card.updateLapsTable();
+    assert.ok(card._recentLapsListEl.innerHTML.includes('V1'), 'Must show V1');
+    assert.ok(card._recentLapsListEl.innerHTML.includes('00:45.00'), 'Must show formatted time 00:45.00');
+    assert.ok(card._recentLapsListEl.innerHTML.includes('placeholder'), 'Must retain placeholders for missing laps');
 
-    // 1. Verify Sustainable Pace metric box shows ~45.00s
-    const paceEl = el.querySelector(`#metric-pace-${swimmer.id}`);
-    assert.ok(paceEl, 'paceEl must exist');
-    assert.strictEqual(paceEl.textContent, '45.00s', 'Pace metric must display 45.00s modal pace');
-
-    // 2. Verify outlier flags populated on laps
-    assert.strictEqual(card.laps[0].isOutlier, false, 'Lap 1 is inlier');
-    assert.strictEqual(card.laps[1].isOutlier, false, 'Lap 2 is inlier');
-    assert.strictEqual(card.laps[2].isOutlier, false, 'Lap 3 is inlier');
-    assert.strictEqual(card.laps[3].isOutlier, true, 'Lap 4 (60s) is outlier');
-
-    // 3. Verify laps table HTML contains outlier styling and pill
-    const tbody = el.querySelector(`#laps-body-${swimmer.id}`);
-    assert.ok(tbody, 'tbody must exist');
-    assert.ok(tbody.innerHTML.includes('class="outlier"'), 'Must render outlier CSS class on 60s row');
-    assert.ok(tbody.innerHTML.includes('<span class="outlier-pill">OUTLIER</span>'), 'Must render OUTLIER pill');
-  });
-
-  test('TC-SC-103: updateBoxplot() invokes renderBoxplot passing options object', async () => {
-    const card = new SwimmerCard({ swimmer });
-    const el = card.render();
-
+    // 3. Add 4 laps: verify 3 most recent are displayed (Lap 4, Lap 3, Lap 2)
     card.laps = [
       { lapNumber: 1, splitDurationMs: 45000, cumulativeDurationMs: 45000 },
-      { lapNumber: 2, splitDurationMs: 46000, cumulativeDurationMs: 91000 }
+      { lapNumber: 2, splitDurationMs: 46000, cumulativeDurationMs: 91000 },
+      { lapNumber: 3, splitDurationMs: 44500, cumulativeDurationMs: 135500 },
+      { lapNumber: 4, splitDurationMs: 43200, cumulativeDurationMs: 178700 }
     ];
+    card._updateRecentLaps();
 
-    await card.updateBoxplot();
+    const html = card._recentLapsListEl.innerHTML;
+    assert.ok(html.includes('V4'), 'Must show Lap 4');
+    assert.ok(html.includes('V3'), 'Must show Lap 3');
+    assert.ok(html.includes('V2'), 'Must show Lap 2');
+    assert.ok(!html.includes('V1'), 'Lap 1 must roll off when 4 laps exist');
+    assert.ok(!html.includes('placeholder'), 'All 3 rows must be populated with no placeholders');
 
-    const boxplotWrapper = el.querySelector(`#boxplot-${swimmer.id}`);
-    assert.ok(boxplotWrapper, 'boxplot wrapper must exist');
-    assert.ok(boxplotWrapper.innerHTML.includes('<svg'), 'Boxplot must render SVG markup');
-    assert.ok(boxplotWrapper.innerHTML.includes('viewBox="0 0 300 80"'), 'Default options viewBox width/height preserved');
+    // Verify reverse chronological order (V4 appears before V3, and V3 before V2)
+    const idx4 = html.indexOf('V4');
+    const idx3 = html.indexOf('V3');
+    const idx2 = html.indexOf('V2');
+    assert.ok(idx4 < idx3 && idx3 < idx2, 'Laps must be in reverse order: V4, V3, V2');
   });
 
-  test('TC-SC-104: Empty laps state displays -- and resets tables', () => {
-    const card = new SwimmerCard({ swimmer, laps: [] });
+  test('TC-SC-203: updateTimeDisplay() uses cached DOM reference with dirty-checking', () => {
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    card.timerState = {
+      swimmerId: swimmer.id,
+      state: TIMER_STATES.PAUSED,
+      startTime: 1000,
+      lastResumeTime: 1000,
+      accumulatedMs: 15420
+    };
+
+    // First call updates DOM
+    card.updateTimeDisplay();
+    assert.strictEqual(card._timeEl.textContent, '00:15.42');
+    assert.strictEqual(card._lastTimeStr, '00:15.42');
+
+    // Mutate internal state and call again
+    card.timerState.accumulatedMs = 20500;
+    card.updateTimeDisplay();
+    assert.strictEqual(card._timeEl.textContent, '00:20.50');
+    assert.strictEqual(card._lastTimeStr, '00:20.50');
+  });
+
+  test('TC-SC-204: State machine updates visual controls (Iniciar, Pausar, Reanudar, Detener, Reiniciar)', () => {
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    // 1. RUNNING state
+    card.timerState.state = TIMER_STATES.RUNNING;
+    card.timerState.accumulatedMs = 5000;
+    card.updateUI();
+
+    assert.strictEqual(card._stateLabelEl.textContent, 'EN MARCHA');
+    assert.ok(card._btnStartEl.innerHTML.includes('Pausar'), 'Start button must show Pausar when RUNNING');
+    assert.strictEqual(card._btnStopEl.disabled, false, 'Stop button must be enabled when RUNNING');
+    assert.strictEqual(card._btnResetEl.disabled, false, 'Reset button must be enabled when RUNNING');
+    assert.strictEqual(card._lapBtnEl.disabled, false, 'Lap button must be enabled when RUNNING');
+
+    // 2. PAUSED state
+    card.timerState.state = TIMER_STATES.PAUSED;
+    card.updateUI();
+
+    assert.strictEqual(card._stateLabelEl.textContent, 'PAUSADO');
+    assert.ok(card._btnStartEl.innerHTML.includes('Reanudar'), 'Start button must show Reanudar when PAUSED');
+    assert.strictEqual(card._btnStopEl.disabled, false, 'Stop button must be enabled when PAUSED');
+    assert.strictEqual(card._btnResetEl.disabled, false, 'Reset button must be enabled when PAUSED');
+    assert.strictEqual(card._lapBtnEl.disabled, true, 'Lap button must be disabled when PAUSED');
+
+    // 3. STOPPED state
+    card.timerState.state = TIMER_STATES.STOPPED;
+    card.updateUI();
+
+    assert.strictEqual(card._stateLabelEl.textContent, 'DETENIDO');
+    assert.ok(card._btnStartEl.innerHTML.includes('Iniciar'), 'Start button must show Iniciar when STOPPED');
+    assert.strictEqual(card._btnStopEl.disabled, true, 'Stop button must be disabled when STOPPED');
+    assert.strictEqual(card._btnResetEl.disabled, false, 'Reset button must remain enabled when STOPPED with elapsed time');
+    assert.strictEqual(card._lapBtnEl.disabled, true, 'Lap button must be disabled when STOPPED');
+  });
+
+  test('TC-SC-205: handleReset() resets timer to IDLE, clears laps, and resets lap feed', async () => {
+    await repository.saveSwimmer(swimmer);
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    // Start timer and add laps
+    await card.handleStart();
+    assert.strictEqual(card.timerState.state, TIMER_STATES.RUNNING);
+
+    await card.handleLap();
+    await card.handleLap();
+    assert.strictEqual(card.laps.length, 2);
+
+    // Invoke handleReset() directly
+    await card.handleReset();
+
+    // Verify state reset to IDLE and time to zero
+    assert.strictEqual(card.timerState.state, TIMER_STATES.IDLE);
+    assert.strictEqual(card.timerState.accumulatedMs, 0);
+    assert.strictEqual(card.laps.length, 0);
+    assert.strictEqual(card._timeEl.textContent, '00:00.00');
+    assert.strictEqual(card._stateLabelEl.textContent, 'LISTO');
+    assert.strictEqual(card._lapCountEl.textContent, 'V1');
+
+    // Verify recent laps are reset to placeholders
+    assert.ok(card._recentLapsListEl.innerHTML.includes('placeholder'));
+  });
+
+  test('TC-SC-206: 100% Spanish labels and accessibility attributes', () => {
+    const card = new SwimmerCard({ swimmer });
     const el = card.render();
 
-    const paceEl = el.querySelector(`#metric-pace-${swimmer.id}`);
-    assert.strictEqual(paceEl.textContent, '--');
+    const html = el.innerHTML;
+    const spanishLabels = ['Iniciar', 'Detener', 'Reiniciar', 'PASE', 'Métricas', 'LISTO'];
+    for (const label of spanishLabels) {
+      assert.ok(html.includes(label), `Card must include Spanish label: ${label}`);
+    }
 
-    const tbody = el.querySelector(`#laps-body-${swimmer.id}`);
-    assert.ok(tbody.innerHTML.includes('No laps recorded yet'));
-
-    const boxplotWrapper = el.querySelector(`#boxplot-${swimmer.id}`);
-    assert.ok(boxplotWrapper.innerHTML.includes('Record laps to view pace boxplot'));
+    // Verify no English buttons exist
+    const englishLabels = ['>Start<', '>Stop<', '>Reset<', '>Lap<'];
+    for (const english of englishLabels) {
+      assert.ok(!html.includes(english), `Card must NOT include English button: ${english}`);
+    }
   });
 });
