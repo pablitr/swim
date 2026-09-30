@@ -164,19 +164,19 @@ body {
 /* Card Header: Swimmer Info and Metrics Lupa */
 .card-header {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+  min-height: 54px;
+}
+
+.card-header-meta {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-height: 32px;
-}
-
-.card-swimmer-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
 }
 
 .card-lane-badge {
@@ -191,12 +191,16 @@ body {
 }
 
 .card-swimmer-name {
-  font-size: 14px;
+  width: 100%;
+  min-width: 0;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.1;
   margin: 0;
 }
 
@@ -236,7 +240,8 @@ body {
 }
 
 .stopwatch-time {
-  contain: strict;
+  /* Keep intrinsic text sizing; size containment here collapses and clips the digits. */
+  contain: layout paint;
   font-family: var(--font-mono);
   font-size: 2.2rem;
   font-weight: 900;
@@ -394,7 +399,7 @@ body {
   border-radius: 4px;
 }
 
-/* Actions Toolbar: Iniciar/Pausar, Detener, Reiniciar */
+/* Actions Toolbar: primary start/pause control plus a smaller stop control */
 .card-actions-toolbar {
   display: flex;
   gap: 8px;
@@ -433,6 +438,7 @@ body {
 }
 
 .btn-card-start {
+  flex: 2;
   background-color: var(--color-start);
   color: var(--color-lap-text, #060b14);
   border-color: var(--color-start-hover);
@@ -463,6 +469,7 @@ body {
 }
 
 .btn-card-stop {
+  flex: 0.75;
   background-color: var(--color-stop);
   color: #ffffff;
   border-color: var(--color-stop-hover);
@@ -470,16 +477,6 @@ body {
 
 .btn-card-stop:hover:not(:disabled) {
   background-color: var(--color-stop-hover);
-}
-
-.btn-card-reset {
-  background-color: var(--color-reset);
-  color: var(--color-reset-text, #f8fafc);
-  border-color: var(--color-reset-hover);
-}
-
-.btn-card-reset:hover:not(:disabled) {
-  background-color: var(--color-reset-hover);
 }
 
 /* Page Footer - Bottom Button "Ver Estadísticas Globales" (R1) */
@@ -761,11 +758,26 @@ body {
   background-color: rgba(239, 68, 68, 0.15);
 }
 
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.metrics-actions .btn-secondary {
+  min-height: var(--touch-target-min);
+}
+
 /* Global Stats Table & Cards */
 .stats-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: var(--space-2);
+}
+
+.stats-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
 }
 
 /* Forms */
@@ -877,4 +889,110 @@ body {
   padding: 3px 8px;
   border-radius: var(--radius-md);
   flex-shrink: 0;
+}
+
+/* Compact two-column roster on phones so two rows fit without scrolling. */
+@media (max-width: 640px) {
+  .app-main {
+    padding: 8px 4px;
+  }
+
+  .swimmer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .swimmer-card {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .card-header {
+    min-height: 49px;
+    gap: 0;
+  }
+
+  .card-header-meta {
+    min-height: 32px;
+    gap: 4px;
+  }
+
+  .card-lane-badge {
+    padding: 2px 4px;
+    font-size: 10px;
+  }
+
+  .card-swimmer-name {
+    font-size: 15px;
+  }
+
+  .btn-card-lupa {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .btn-card-lupa span {
+    display: none;
+  }
+
+  .btn-card-lupa svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .stopwatch-time {
+    font-size: clamp(1.3rem, 6.4vw, 1.6rem);
+  }
+
+  .timer-state-label {
+    font-size: 8px;
+  }
+
+  .card-recent-laps {
+    min-height: 62px;
+    padding: 4px;
+  }
+
+  .recent-lap-row {
+    font-size: 9px;
+  }
+
+  .recent-lap-row .lap-num {
+    width: 20px;
+  }
+
+  .recent-lap-row .lap-cum {
+    width: 50px;
+  }
+
+  .btn-card-lap {
+    min-height: 44px;
+    gap: 4px;
+    font-size: 14px;
+  }
+
+  .card-actions-toolbar {
+    gap: 4px;
+  }
+
+  .btn-card-action {
+    min-width: 0;
+    padding: 3px 1px;
+    flex-direction: row;
+    gap: 3px;
+    font-size: 8px;
+    line-height: 1.05;
+  }
+
+  .btn-card-action svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .btn-action-label {
+    white-space: nowrap;
+  }
 }

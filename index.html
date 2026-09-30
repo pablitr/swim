@@ -138,6 +138,16 @@
   <!-- ===== SERVICE WORKER ===== -->
   <script>
     if ('serviceWorker' in navigator) {
+      const hadServiceWorkerController = Boolean(navigator.serviceWorker.controller);
+      let reloadedForServiceWorkerUpdate = false;
+
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadServiceWorkerController && !reloadedForServiceWorkerUpdate) {
+          reloadedForServiceWorkerUpdate = true;
+          window.location.reload();
+        }
+      });
+
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
           .then(r => console.log('[PWA] SW registrado:', r.scope))

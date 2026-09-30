@@ -1,5 +1,5 @@
 // SwimmerCard - Tarjeta Densa de Cronómetro para Pileta (M2 UI/UX)
-// Diseño de alto contraste con historial de 3 pases, controles Iniciar/Pausar/Detener/Reiniciar
+// Diseño de alto contraste con historial de 3 pases y controles Iniciar/Pausar/Detener
 // y referencias DOM cacheadas en render() para rendimiento a 60fps sin recalculación de layout.
 
 import { timerEngine, formatTime, TIMER_STATES } from '../timing/timer-engine.js';
@@ -10,8 +10,7 @@ import { metricsModal } from './metrics-modal.js';
 // SVG icons
 const ICON_PLAY = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
 const ICON_PAUSE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-const ICON_STOP = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>`;
-const ICON_RESET = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
+const ICON_STOP = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>`;
 const ICON_LUPA = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
 const ICON_LAP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 
@@ -47,7 +46,6 @@ export class SwimmerCard {
     this._lapCountEl = null;
     this._btnStartEl = null;
     this._btnStopEl = null;
-    this._btnResetEl = null;
     this._btnLupaEl = null;
     this._lastTimeStr = null;
 
@@ -78,14 +76,14 @@ export class SwimmerCard {
     card.innerHTML = `
       <!-- 1. Barra de Identificación -->
       <div class="card-header">
-        <div class="card-swimmer-info">
+        <div class="card-header-meta">
           <span class="card-lane-badge">C${this.swimmer.lane ?? '-'}</span>
-          <h3 class="card-swimmer-name" title="${escapedName}">${escapedName}</h3>
+          <button class="btn-card-lupa" id="btn-lupa-${this.swimmer.id}" aria-label="Ver métricas completas" title="Ver métricas y gráfico">
+            ${ICON_LUPA}
+            <span>Métricas</span>
+          </button>
         </div>
-        <button class="btn-card-lupa" id="btn-lupa-${this.swimmer.id}" aria-label="Ver métricas completas" title="Ver métricas y gráfico">
-          ${ICON_LUPA}
-          <span>Métricas</span>
-        </button>
+        <h3 class="card-swimmer-name" title="${escapedName}">${escapedName}</h3>
       </div>
 
       <!-- 2. Cronómetro Principal -->
@@ -111,7 +109,7 @@ export class SwimmerCard {
         <span class="lap-btn-counter" id="lapcount-${this.swimmer.id}">V1</span>
       </button>
 
-      <!-- 5. Barra de Controles: Iniciar/Pausar/Reanudar, Detener, Reiniciar -->
+      <!-- 5. Barra de Controles: Iniciar/Pausar/Reanudar y Detener -->
       <div class="card-actions-toolbar">
         <button class="btn-card-action btn-card-start" id="btn-start-${this.swimmer.id}" aria-label="Iniciar cronómetro">
           ${ICON_PLAY}
@@ -121,11 +119,6 @@ export class SwimmerCard {
         <button class="btn-card-action btn-card-stop" id="btn-stop-${this.swimmer.id}" aria-label="Detener cronómetro" disabled>
           ${ICON_STOP}
           <span class="btn-action-label">Detener</span>
-        </button>
-
-        <button class="btn-card-action btn-card-reset" id="btn-reset-${this.swimmer.id}" aria-label="Reiniciar cronómetro" disabled>
-          ${ICON_RESET}
-          <span class="btn-action-label">Reiniciar</span>
         </button>
       </div>
     `;
@@ -140,7 +133,6 @@ export class SwimmerCard {
     this._lapCountEl = card.querySelector('#lapcount-' + this.swimmer.id);
     this._btnStartEl = card.querySelector('#btn-start-' + this.swimmer.id);
     this._btnStopEl = card.querySelector('#btn-stop-' + this.swimmer.id);
-    this._btnResetEl = card.querySelector('#btn-reset-' + this.swimmer.id);
     this._btnLupaEl = card.querySelector('#btn-lupa-' + this.swimmer.id);
 
     this._bindEvents();
@@ -183,15 +175,6 @@ export class SwimmerCard {
       });
     }
 
-    // Reiniciar
-    if (this._btnResetEl) {
-      this._btnResetEl.addEventListener('click', async (e) => {
-        if (e && e.preventDefault) e.preventDefault();
-        if (e && e.stopPropagation) e.stopPropagation();
-        await this.handleReset();
-      });
-    }
-
     // Botón de Pase (con debounce 300ms para evitar doble tap)
     if (this._lapBtnEl) {
       this._lapBtnEl.addEventListener('click', async (e) => {
@@ -208,7 +191,11 @@ export class SwimmerCard {
       this._btnLupaEl.addEventListener('click', (e) => {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
-        metricsModal.open(this.swimmer, this.laps);
+        metricsModal.open(this.swimmer, this.laps, {
+          onReset: () => this.handleReset(),
+          canReset: () => this.timerState.state !== TIMER_STATES.IDLE || this.laps.length > 0,
+          onDelete: this.callbacks.onDelete
+        });
       });
     }
   }
@@ -248,12 +235,8 @@ export class SwimmerCard {
   async handleReset() {
     this.timerState = await timerEngine.reset(this.swimmer.id);
     ticker.unsubscribe(`swimmer-${this.swimmer.id}`);
-    try {
-      if (repository && typeof repository.clearLaps === 'function') {
-        await repository.clearLaps(this.swimmer.id);
-      }
-    } catch (e) {
-      // Non-blocking
+    if (repository && typeof repository.clearLaps === 'function') {
+      await repository.clearLaps(this.swimmer.id);
     }
     this.laps = [];
     this._lastTimeStr = '00:00.00';
@@ -261,6 +244,7 @@ export class SwimmerCard {
     this.updateUI();
     if (this.callbacks.onTimerChange) this.callbacks.onTimerChange(this.swimmer.id, this.timerState);
     if (this.callbacks.onClearLaps) this.callbacks.onClearLaps(this.swimmer.id);
+    return this.laps;
   }
 
   async handleLap() {
@@ -412,12 +396,6 @@ export class SwimmerCard {
       this._btnStopEl.disabled = !canStop;
     }
 
-    // Botón Reiniciar: habilitado si no está en estado IDLE inicial limpio
-    if (this._btnResetEl) {
-      const hasElapsed = (this.timerState.accumulatedMs || 0) > 0 || (this.timerState.state !== TIMER_STATES.IDLE) || this.laps.length > 0;
-      this._btnResetEl.disabled = !hasElapsed;
-    }
-
     // Botón Pase: habilitado solo si el cronómetro está en marcha
     if (this._lapBtnEl) {
       this._lapBtnEl.disabled = this.timerState.state !== TIMER_STATES.RUNNING;
@@ -455,7 +433,6 @@ export class SwimmerCard {
     this._lapCountEl = null;
     this._btnStartEl = null;
     this._btnStopEl = null;
-    this._btnResetEl = null;
     this._btnLupaEl = null;
   }
 

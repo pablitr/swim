@@ -13,6 +13,9 @@ class MetricsModal {
     this.laneEl = null;
     this.bodyEl = null;
     this.closeBtn = null;
+    this.swimmer = null;
+    this.laps = [];
+    this.callbacks = {};
     this._bound_close = this._close.bind(this);
     this._bound_overlayClick = this._overlayClick.bind(this);
     this._bound_keyDown = this._keyDown.bind(this);
@@ -34,18 +37,23 @@ class MetricsModal {
   /**
    * Abre el modal con las métricas del nadador dado.
    * @param {Object} swimmer - { id, name, lane, baseline100mSeconds }
-   * @param {Array} laps - Array de vuelas registradas
+   * @param {Array} laps - Array de vueltas registradas
+   * @param {Object} [callbacks] - Sesión y acciones de perfil
    */
-  open(swimmer, laps = []) {
+  open(swimmer, laps = [], callbacks = {}) {
     this._init();
     if (!this.modalEl) return;
+
+    this.swimmer = swimmer;
+    this.laps = [...laps];
+    this.callbacks = callbacks;
 
     // Encabezado
     if (this.laneEl) this.laneEl.textContent = `C${swimmer.lane ?? '-'}`;
     if (this.titleEl) this.titleEl.textContent = swimmer.name || 'Nadador';
 
     // Renderizar contenido
-    this._renderBody(swimmer, laps);
+    this._renderBody(swimmer, this.laps);
 
     this.modalEl.classList.add('open');
     this.modalEl.setAttribute('aria-hidden', 'false');
@@ -156,7 +164,58 @@ class MetricsModal {
       lapsHTML = `<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:16px;">Sin pases registrados aún.</div>`;
     }
 
-    this.bodyEl.innerHTML = zonesHTML + metricsHTML + boxplotHTML + lapsHTML;
+    const canReset = typeof this.callbacks.canReset === 'function'
+      ? this.callbacks.canReset()
+      : laps.length > 0;
+
+    this.bodyEl.innerHTML = zonesHTML + metricsHTML + boxplotHTML + lapsHTML + `
+      <div class="modal-actions-bar metrics-actions">
+        <button type="button" id="metrics-reset-session" class="btn-secondary btn-danger" ${canReset ? '' : 'disabled'}>
+          Borrar sesión
+        </button>
+        <button type="button" id="metrics-delete-swimmer" class="btn-secondary btn-danger">
+          Eliminar nadador
+        </button>
+      </div>`;
+
+    const resetButton = this.bodyEl.querySelector('#metrics-reset-session');
+    if (resetButton) {
+      resetButton.addEventListener('click', async () => {
+        const swimmerName = this.swimmer?.name || 'este nadador';
+        const confirmed = window.confirm(
+          `¿Quieres borrar los datos de la sesión de ${swimmerName}? Se eliminarán el cronómetro y los pases; el perfil del nadador se conservará.`
+        );
+        if (!confirmed || typeof this.callbacks.onReset !== 'function') return;
+
+        try {
+          const updatedLaps = await this.callbacks.onReset();
+          this.laps = Array.isArray(updatedLaps) ? updatedLaps : [];
+          this._renderBody(this.swimmer, this.laps);
+        } catch (err) {
+          console.error('[MetricsModal] No se pudo borrar la sesión:', err);
+          window.alert('No se pudieron borrar todos los datos de la sesión. Comprueba el almacenamiento y vuelve a intentarlo.');
+        }
+      });
+    }
+
+    const deleteButton = this.bodyEl.querySelector('#metrics-delete-swimmer');
+    if (deleteButton) {
+      deleteButton.addEventListener('click', async () => {
+        if (typeof this.callbacks.onDelete !== 'function') return;
+        const swimmerName = this.swimmer?.name || 'este nadador';
+        const confirmed = window.confirm(
+          `¿Eliminar el perfil de ${swimmerName}? También se borrarán su cronómetro y todo su historial de pases. Esta acción no se puede deshacer.`
+        );
+        if (!confirmed) return;
+
+        try {
+          await this.callbacks.onDelete(this.swimmer.id);
+          this._close();
+        } catch (err) {
+          console.error('[MetricsModal] No se pudo eliminar el nadador:', err);
+        }
+      });
+    }
 
     // Renderizar boxplot SVG ahora que el DOM existe
     if (laps.length > 0) {

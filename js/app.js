@@ -202,6 +202,10 @@ class AppCoordinator {
         </div>
       </div>
 
+      <div class="stats-actions">
+        <button type="button" id="btn-export-csv" class="btn-secondary">Descargar CSV de la serie</button>
+      </div>
+
       <div class="modal-section-title" style="margin-top: var(--space-3);">Resumen por Nadador</div>
       <div class="laps-table-wrapper" style="max-height: 260px;">
         <table class="laps-table">
@@ -222,10 +226,70 @@ class AppCoordinator {
       </div>
     `;
 
+    const exportButton = document.getElementById('btn-export-csv');
+    if (exportButton) exportButton.addEventListener('click', () => this.exportCsv());
+
     this.globalStatsModalEl.classList.add('open');
     if (typeof this.globalStatsModalEl.setAttribute === 'function') {
       this.globalStatsModalEl.setAttribute('aria-hidden', 'false');
     }
+  }
+
+  /** Download swimmer profiles, current timer state, and recorded laps as a CSV file. */
+  exportCsv() {
+    const rows = [[
+      'ID Nadador', 'Nadador', 'Carril', 'Base 100 m (s)', 'Estado',
+      'Tiempo actual', 'Tiempo actual (ms)', 'Pase', 'Parcial (ms)',
+      'Acumulado (ms)', 'Fecha del pase'
+    ]];
+
+    for (const card of this.cards.values()) {
+      const swimmer = card.swimmer;
+      const timer = card.timerState;
+      const elapsedMs = timerEngine.getElapsedMs(timer);
+      const profileAndTimer = [
+        swimmer.id,
+        swimmer.name,
+        swimmer.lane ?? '',
+        swimmer.baseline100mSeconds ?? swimmer.baseline100m ?? '',
+        TIMER_STATE_LABELS_ES[timer.state] || timer.state,
+        formatTime(elapsedMs),
+        Math.round(elapsedMs)
+      ];
+
+      if (card.laps.length === 0) {
+        rows.push([...profileAndTimer, '', '', '', '']);
+        continue;
+      }
+
+      for (const lap of card.laps) {
+        const timestamp = lap.timestamp ? new Date(lap.timestamp).toISOString() : '';
+        rows.push([
+          ...profileAndTimer,
+          lap.lapNumber,
+          lap.splitDurationMs,
+          lap.cumulativeDurationMs,
+          timestamp
+        ]);
+      }
+    }
+
+    const csvEscape = (value) => {
+      let cell = String(value ?? '');
+      if (/^[=+@-]/.test(cell)) cell = `'${cell}`;
+      return `"${cell.replace(/"/g, '""')}"`;
+    };
+    const csv = `\uFEFF${rows.map(row => row.map(csvEscape).join(';')).join('\r\n')}`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `swimcoach-dataset-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   /**
@@ -311,6 +375,8 @@ class AppCoordinator {
    */
   async handleDeleteSwimmer(swimmerId) {
     await repository.deleteSwimmer(swimmerId);
+    const card = this.cards.get(swimmerId);
+    if (card) card.destroy();
     this.cards.delete(swimmerId);
     if (this.cards.size === 0) {
       this._renderEmptyState();

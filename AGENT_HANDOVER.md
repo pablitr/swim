@@ -17,12 +17,13 @@
 ## 2. Architecture & Tech Stack
 - **Stack:** Pure Vanilla JS (ES Modules), HTML5, CSS3. **Zero bundlers** (no Webpack/Vite), zero external dependencies (no D3/React).
 - **Persistence:** Local-first architecture using `IndexedDB`. Data survives hard reloads and offline usage. Cloud sync is explicitly deferred.
-- **PWA:** `sw.js` implements a cache-first strategy for static assets. Currently on cache version `swimcoach-v2`.
+- **PWA:** `sw.js` implements offline caching for static assets. Current cache version: `swimcoach-v5`.
 
 ## 3. Current State & Recent Overhauls (M1-M3)
 The application just went through a massive multi-agent overhaul (Milestones 1-3):
 - **UI/UX:** Fully translated to Spanish. Features an ultra-compact header (~40px), dense 2-column mobile grid, and high-contrast WCAG AAA tokens (12.87:1).
-- **Swimmer Cards (`js/ui/swimmer-card.js`):** The entire card body is a giant "Pase" (lap) button. It displays the 3 most recent lap splits directly on the surface. Includes dedicated Start/Pause, Lupa (metrics modal), and Reiniciar (reset) buttons.
+- **Swimmer Cards (`js/ui/swimmer-card.js`):** Phone layouts use two columns. Each card displays the swimmer name centered above the timer, the 3 most recent lap splits, a primary Start/Pause control, and a smaller Stop control. Session reset and profile deletion are available from the swimmer's Metrics panel, with confirmation.
+- **CSV Export:** The Global Statistics panel includes a download for swimmer profiles, timer state, and recorded laps.
 - **Performance:** Highly optimized.
   - Ticker uses `requestAnimationFrame` with background auto-sleep.
   - DOM queries are cached (~359ns update latency).
@@ -38,6 +39,6 @@ The application just went through a massive multi-agent overhaul (Milestones 1-3
 - `js/ui/`: `swimmer-card.js`, `metrics-modal.js`, `boxplot-svg.js`.
 
 ## 5. Deferred / Future Work
-- **CSV Export:** Explicitly deferred by the user in previous sessions.
 - **Cloud Sync (Firebase/Supabase):** Deferred. Focus remains 100% on local robustness (IndexedDB) for the MVP.
+- **Persistence:** Timer state is saved on state transitions, and lap records are saved when a lap is recorded. The animation ticker updates the visible timer without writing to IndexedDB each frame.
 - **Agent Note:** If you are picking up this project for new features, strictly maintain the Vanilla JS zero-build constraint and the local-first integrity.
