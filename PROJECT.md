@@ -43,8 +43,9 @@ Local-first Progressive Web App (PWA) proof-of-concept for swimming coaches to t
 | M1 | PWA Shell & Storage Engine | HTML5/CSS3 layout, PWA shell (manifest, sw.js), IndexedDB storage engine (`db.js`, `repository.js`) | none | DONE |
 | M2 | Multi-Swimmer Timing Engine & UI | Concurrent zero-drift timers, Swimmer Cards, Start/Stop/Lap controls, hard reload recovery | M1 | DONE |
 | M3 | Analytics & SVG Boxplot Engine | Training zones (75%, 80%, 90%), MAD outlier filtering, sustainable pace, pure SVG boxplot | M1 | DONE |
-| M4 | E2E Acceptance Verification | Pass 100% of E2E test suite (Tiers 1-4) and `tests/verify_acceptance.js` | M2, M3, E2E Track | IN_PROGRESS |
-| M5 | Adversarial Coverage Hardening | Tier 5 adversarial testing and white-box coverage hardening | M4 | PLANNED |
+| M4 | E2E Acceptance Verification | Pass 100% of E2E test suite (Tiers 1-4) and `tests/verify_acceptance.js` | M2, M3, E2E Track | DONE |
+| M5 | Adversarial Coverage Hardening | Tier 5 adversarial testing and white-box coverage hardening | M4 | DONE |
+
 
 
 

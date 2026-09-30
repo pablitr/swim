@@ -67,13 +67,13 @@ Build a local-first PWA proof-of-concept for swimming coaches to track multiple 
 | challenger_2 | teamwork_preview_challenger | M4: Statistical & Math Stress (APPROVE) | completed | c953e327-f2bf-4c7f-9352-84b8954dd168 |
 | auditor_1 | teamwork_preview_auditor | M4: Forensic Integrity Audit (CLEAN) | completed | 61e361cf-0281-4097-9ffc-3719849beb21 |
 | worker_remediation | teamwork_preview_worker | Remediation for reviewer_1 feedback | completed | cc79efde-020d-4d23-9fc4-db7b691b9d19 |
-| reviewer_final | teamwork_preview_reviewer | Gate 2: Final Verification Review | in-progress | 612f0ab1-8184-49f1-bf66-78fcc9656425 |
-| auditor_final | teamwork_preview_auditor | Gate 2: Final Forensic Audit | in-progress | fb711d18-d68a-418b-bb95-7c3fc2747d65 |
+| reviewer_final | teamwork_preview_reviewer | Gate 2: Final Verification Review (APPROVE) | completed | 612f0ab1-8184-49f1-bf66-78fcc9656425 |
+| auditor_final | teamwork_preview_auditor | Gate 2: Final Forensic Audit (CLEAN) | completed | fb711d18-d68a-418b-bb95-7c3fc2747d65 |
 
 ## Succession Status
 - Succession required: no
 - Spawn count: 15 / 16
-- Pending subagents: 612f0ab1-8184-49f1-bf66-78fcc9656425, fb711d18-d68a-418b-bb95-7c3fc2747d65
+- Pending subagents: none
 - Predecessor: none
 - Successor: not yet spawned
 

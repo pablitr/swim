@@ -1,21 +1,26 @@
 // App Coordinator - SwimCoach Tracker Master Controller
-// Initializes storage, rehydrates running timers on hard reload, and manages master heat controls.
+// Initializes storage, rehydrates running timers on hard reload, and manages global stats.
 
 import { repository } from './storage/repository.js';
-import { timerEngine, TIMER_STATES } from './timing/timer-engine.js';
+import { timerEngine, formatTime, TIMER_STATES } from './timing/timer-engine.js';
 import { SwimmerCard } from './ui/swimmer-card.js';
 import { modalManager } from './ui/modal.js';
+import { computeSustainablePace } from './analytics/pace-calculator.js';
 
 class AppCoordinator {
   constructor() {
     this.cards = new Map();
     this.gridEl = null;
+    this.globalStatsModalEl = null;
 
     this.handleMasterStart = this.handleMasterStart.bind(this);
     this.handleMasterStop = this.handleMasterStop.bind(this);
     this.handleMasterReset = this.handleMasterReset.bind(this);
     this.handleSaveSwimmer = this.handleSaveSwimmer.bind(this);
     this.handleDeleteSwimmer = this.handleDeleteSwimmer.bind(this);
+    this.showGlobalStats = this.showGlobalStats.bind(this);
+    this.closeGlobalStats = this.closeGlobalStats.bind(this);
+    this._handleKeyDown = this._handleKeyDown.bind(this);
   }
 
   /**
@@ -23,16 +28,19 @@ class AppCoordinator {
    */
   async init() {
     this.gridEl = document.getElementById('swimmer-grid');
+    this.globalStatsModalEl = document.getElementById('global-stats-modal');
 
     // 1. Initialize IndexedDB storage and timing engine
     await repository.init();
     await timerEngine.init(repository);
 
-    // 2. Wire up Master Heat Controls
+    // 2. Wire up Header & Global Controls
     const btnStartAll = document.getElementById('btn-master-start');
     const btnStopAll = document.getElementById('btn-master-stop');
     const btnResetAll = document.getElementById('btn-master-reset');
     const btnAddTrigger = document.getElementById('btn-add-swimmer-trigger');
+    const btnGlobalStats = document.getElementById('btn-global-stats');
+    const btnCloseGlobalStats = document.getElementById('global-stats-close-btn');
 
     if (btnStartAll) btnStartAll.addEventListener('click', this.handleMasterStart);
     if (btnStopAll) btnStopAll.addEventListener('click', this.handleMasterStop);
@@ -41,7 +49,27 @@ class AppCoordinator {
       btnAddTrigger.addEventListener('click', () => modalManager.open());
     }
 
-    // 3. Initialize modal controller
+    if (btnGlobalStats) {
+      btnGlobalStats.addEventListener('click', this.showGlobalStats);
+    }
+
+    if (btnCloseGlobalStats) {
+      btnCloseGlobalStats.addEventListener('click', this.closeGlobalStats);
+    }
+
+    if (this.globalStatsModalEl) {
+      this.globalStatsModalEl.addEventListener('click', (e) => {
+        if (e.target === this.globalStatsModalEl) {
+          this.closeGlobalStats();
+        }
+      });
+    }
+
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('keydown', this._handleKeyDown);
+    }
+
+    // 3. Initialize swimmer modal controller
     modalManager.init({
       onSave: this.handleSaveSwimmer
     });
@@ -93,16 +121,120 @@ class AppCoordinator {
           onEdit: (swimmerData) => modalManager.open(swimmerData),
           onDelete: (swimmerId) => this.handleDeleteSwimmer(swimmerId),
           onClearLaps: (swimmerId) => {
-            console.log(`[App] Laps cleared for swimmer ${swimmerId}`);
+            console.log(`[App] Vueltas borradas para nadador ${swimmerId}`);
           },
           onTimerChange: (swimmerId, newState) => {
-            console.log(`[App] Timer transition for ${swimmerId}:`, newState.state);
+            console.log(`[App] Transición de cronómetro para ${swimmerId}:`, newState.state);
           }
         }
       });
 
       card.mount(this.gridEl);
       this.cards.set(swimmer.id, card);
+    }
+  }
+
+  /**
+   * Shows aggregated global statistics modal
+   */
+  showGlobalStats() {
+    if (!this.globalStatsModalEl) return;
+    const contentEl = document.getElementById('global-stats-content');
+    if (!contentEl) return;
+
+    const totalSwimmers = this.cards.size;
+    const runningSwimmers = [...this.cards.values()].filter(c => c.timerState.state === TIMER_STATES.RUNNING).length;
+    const allLaps = [...this.cards.values()].flatMap(c => c.laps);
+    const totalLaps = allLaps.length;
+
+    let bestSplitMs = null;
+    if (allLaps.length > 0) {
+      bestSplitMs = Math.min(...allLaps.map(l => l.splitDurationMs));
+    }
+
+    const swimmerRows = [...this.cards.values()].map(card => {
+      const swimmer = card.swimmer;
+      const laps = card.laps;
+      const best = laps.length > 0 ? formatTime(Math.min(...laps.map(l => l.splitDurationMs))) : '--';
+      let paceStr = '--';
+      if (laps.length > 0) {
+        const paceData = computeSustainablePace(laps.map(l => l.splitDurationMs / 1000));
+        if (paceData.sustainablePace !== null && paceData.sustainablePace !== undefined) {
+          paceStr = `${paceData.sustainablePace.toFixed(2)}s`;
+        }
+      }
+      return `
+        <tr>
+          <td><strong>C${swimmer.lane ?? '-'}</strong></td>
+          <td>${card._escapeHtml(swimmer.name)}</td>
+          <td><span class="status-indicator">${card.timerState.state}</span></td>
+          <td>${laps.length}</td>
+          <td>${best}</td>
+          <td>${paceStr}</td>
+        </tr>
+      `;
+    }).join('');
+
+    contentEl.innerHTML = `
+      <div class="stats-summary-grid">
+        <div class="metric-box">
+          <div class="metric-label">Nadadores</div>
+          <div class="metric-value">${totalSwimmers}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">En Curso</div>
+          <div class="metric-value">${runningSwimmers}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Total Vueltas</div>
+          <div class="metric-value">${totalLaps}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Mejor Pase</div>
+          <div class="metric-value">${bestSplitMs !== null ? formatTime(bestSplitMs) : '--'}</div>
+        </div>
+      </div>
+
+      <div class="modal-section-title" style="margin-top: var(--space-3);">Resumen por Nadador</div>
+      <div class="laps-table-wrapper" style="max-height: 260px;">
+        <table class="laps-table">
+          <thead>
+            <tr>
+              <th>Carril</th>
+              <th>Nombre</th>
+              <th>Estado</th>
+              <th>Vueltas</th>
+              <th>Mejor Pase</th>
+              <th>Ritmo (Moda)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${swimmerRows.length > 0 ? swimmerRows : '<tr><td colspan="6" style="text-align:center; padding:12px; color:var(--text-muted);">No hay datos registrados aún</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    this.globalStatsModalEl.classList.add('open');
+    if (typeof this.globalStatsModalEl.setAttribute === 'function') {
+      this.globalStatsModalEl.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  /**
+   * Closes global statistics modal
+   */
+  closeGlobalStats() {
+    if (!this.globalStatsModalEl) return;
+    this.globalStatsModalEl.classList.remove('open');
+    if (typeof this.globalStatsModalEl.setAttribute === 'function') {
+      this.globalStatsModalEl.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  _handleKeyDown(e) {
+    if (e.key === 'Escape' && this.globalStatsModalEl && this.globalStatsModalEl.classList.contains('open')) {
+      this.closeGlobalStats();
     }
   }
 
@@ -139,7 +271,7 @@ class AppCoordinator {
    */
   async handleMasterReset() {
     if (this.cards.size === 0) return;
-    const confirmed = confirm('Reset all timers in this heat to zero?');
+    const confirmed = confirm('¿Reiniciar todos los cronómetros de esta serie a cero?');
     if (!confirmed) return;
 
     const promises = [];
@@ -182,14 +314,14 @@ class AppCoordinator {
     if (!this.gridEl) return;
     this.gridEl.innerHTML = `
       <div class="empty-state">
-        <h2 class="empty-state-title">No Swimmers in Heat</h2>
-        <p style="margin-bottom: var(--space-4);">Add your swimmers to start tracking simultaneous laps and sustainable paces.</p>
+        <h2 class="empty-state-title">No hay nadadores en la serie</h2>
+        <p style="margin-bottom: var(--space-4);">Añade nadadores para comenzar a registrar tiempos de vuelta y ritmos sostenibles.</p>
         <button id="btn-empty-add" class="btn-master btn-start-all" style="display:inline-flex;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          Add First Swimmer
+          Añadir Primer Nadador
         </button>
       </div>
     `;

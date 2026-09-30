@@ -68,13 +68,13 @@ export class ModalManager {
     if (!this.modalEl) return;
 
     if (swimmer && swimmer.id) {
-      if (this.titleEl) this.titleEl.textContent = 'Edit Swimmer';
+      if (this.titleEl) this.titleEl.textContent = 'Editar Nadador';
       if (this.idInput) this.idInput.value = swimmer.id;
       if (this.nameInput) this.nameInput.value = swimmer.name || '';
       if (this.laneInput) this.laneInput.value = swimmer.lane ?? '';
       if (this.baselineInput) this.baselineInput.value = swimmer.baseline100mSeconds ?? '';
     } else {
-      if (this.titleEl) this.titleEl.textContent = 'Add Swimmer';
+      if (this.titleEl) this.titleEl.textContent = 'Añadir Nadador';
       if (this.idInput) this.idInput.value = '';
       if (this.nameInput) this.nameInput.value = '';
       if (this.laneInput) this.laneInput.value = '';
@@ -118,7 +118,7 @@ export class ModalManager {
 
     const name = this.nameInput ? this.nameInput.value.trim() : '';
     if (!name) {
-      alert('Please enter a swimmer name.');
+      alert('Por favor, ingresa el nombre del nadador.');
       if (this.nameInput) this.nameInput.focus();
       return;
     }
