@@ -1,0 +1,629 @@
+/* SwimCoach Tracker - Main Styles */
+@import "./variables.css";
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* App Header */
+.app-header {
+  background-color: var(--bg-surface);
+  border-bottom: 2px solid var(--border-default);
+  padding: var(--space-3) var(--space-4);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  filter: drop-shadow(0 0 6px var(--color-pool-glow));
+}
+
+.brand-title {
+  font-size: var(--font-xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.brand-badge {
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  background-color: var(--color-pool-deep);
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-elevated);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-start);
+  box-shadow: 0 0 8px var(--color-start);
+}
+
+.status-indicator.offline .status-dot {
+  background-color: var(--color-lap);
+  box-shadow: 0 0 8px var(--color-lap);
+}
+
+/* Master Controls Bar */
+.master-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.btn-master {
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-4);
+  font-size: var(--font-sm);
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  color: #ffffff;
+}
+
+.btn-master:active {
+  transform: scale(0.97);
+}
+
+.btn-start-all {
+  background-color: var(--color-start);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-start-all:hover {
+  background-color: var(--color-start-hover);
+}
+
+.btn-stop-all {
+  background-color: var(--color-stop);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-stop-all:hover {
+  background-color: var(--color-stop-hover);
+}
+
+.btn-reset-all {
+  background-color: var(--color-reset);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-reset-all:hover {
+  background-color: var(--color-reset-hover);
+}
+
+.btn-add-swimmer {
+  background-color: var(--color-pool-deep);
+  border: 1px solid var(--color-pool-bright);
+  margin-left: auto;
+}
+
+.btn-add-swimmer:hover {
+  background-color: var(--color-pool-vibrant);
+}
+
+/* Main Workspace */
+.app-main {
+  flex: 1;
+  padding: var(--space-4);
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Swimmer Grid */
+.swimmer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 480px) {
+  .swimmer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Swimmer Card */
+.swimmer-card {
+  background-color: var(--bg-surface);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: relative;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.swimmer-card.running {
+  border-color: var(--color-start);
+  box-shadow: 0 0 16px var(--color-start-glow);
+}
+
+.swimmer-card.paused {
+  border-color: var(--color-lap);
+  box-shadow: 0 0 16px var(--color-lap-glow);
+}
+
+/* Card Header */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.swimmer-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.lane-tag {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--color-pool-bright);
+  font-weight: 800;
+  font-size: var(--font-sm);
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.swimmer-name {
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.btn-icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.btn-icon:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-surface-elevated);
+}
+
+/* Baseline & Zones Preview */
+.zones-preview {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--font-xs);
+  background-color: var(--bg-surface-elevated);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.zone-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zone-label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.zone-val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-pool-bright);
+}
+
+/* Stopwatch Display */
+.stopwatch-display-wrapper {
+  background-color: #000000;
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+  position: relative;
+}
+
+.stopwatch-time {
+  font-family: var(--font-mono);
+  font-size: var(--font-display);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1.1;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.swimmer-card.running .stopwatch-time {
+  color: #a7f3d0;
+  text-shadow: 0 0 14px var(--color-start-glow);
+}
+
+.stopwatch-status-tag {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-muted);
+}
+
+.swimmer-card.running .stopwatch-status-tag {
+  background-color: var(--color-start);
+  color: #060b14;
+}
+
+/* Quick Metrics Row */
+.quick-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.metric-box {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.metric-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Large Touch Control Buttons (Poolside wet-finger: >= 48px) */
+.card-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.btn-touch {
+  min-height: var(--touch-target-large);
+  border-radius: var(--radius-md);
+  font-size: var(--font-lg);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  color: #ffffff;
+}
+
+.btn-touch:active {
+  transform: scale(0.96);
+}
+
+.btn-touch-start {
+  background-color: var(--color-start);
+  grid-column: span 1;
+}
+
+.btn-touch-start:hover {
+  background-color: var(--color-start-hover);
+}
+
+.btn-touch-stop {
+  background-color: var(--color-stop);
+}
+
+.btn-touch-stop:hover {
+  background-color: var(--color-stop-hover);
+}
+
+.btn-touch-lap {
+  background-color: var(--color-lap);
+  grid-column: span 1;
+}
+
+.btn-touch-lap:hover {
+  background-color: var(--color-lap-hover);
+}
+
+.btn-touch-lap:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.card-secondary-controls {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.btn-secondary {
+  flex: 1;
+  min-height: var(--touch-target-min);
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  transition: background-color var(--transition-fast);
+}
+
+.btn-secondary:hover {
+  background-color: var(--bg-surface-highlight);
+  color: var(--text-primary);
+}
+
+/* Laps List & Analytics Section */
+.card-details-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.laps-table-wrapper {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.laps-table {
+  width: 100%;
+  font-size: var(--font-xs);
+  text-align: left;
+}
+
+.laps-table th {
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-muted);
+  font-weight: 700;
+  padding: 6px 10px;
+  position: sticky;
+  top: 0;
+}
+
+.laps-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+}
+
+.laps-table tr.outlier {
+  background-color: rgba(236, 72, 153, 0.15);
+  color: var(--color-outlier);
+}
+
+.outlier-pill {
+  background-color: var(--color-outlier);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+/* Boxplot Container */
+.boxplot-wrapper {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.boxplot-svg {
+  width: 100%;
+  height: 100px;
+  overflow: visible;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+  grid-column: 1 / -1;
+  background-color: var(--bg-surface);
+  border: 2px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.empty-state-title {
+  font-size: var(--font-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: var(--bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.modal-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-dialog {
+  background-color: var(--bg-surface);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  width: 100%;
+  max-width: 480px;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: var(--font-xl);
+  font-weight: 800;
+}
+
+.modal-body {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.form-label {
+  font-size: var(--font-sm);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.form-input {
+  min-height: var(--touch-target-min);
+  background-color: var(--bg-surface-elevated);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--font-base);
+  transition: border-color var(--transition-fast);
+}
+
+.form-input:focus {
+  border-color: var(--border-focus);
+}
+
+.modal-footer {
+  padding: var(--space-4);
+  background-color: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
