@@ -169,6 +169,14 @@ body {
   justify-content: center;
   gap: 2px;
   min-height: 54px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.swimmer-card.running .card-header,
+.swimmer-card.paused .card-header {
+  cursor: default;
 }
 
 .card-header-meta {
@@ -177,6 +185,13 @@ body {
   justify-content: space-between;
   gap: 8px;
   min-height: 32px;
+}
+
+.card-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .card-lane-badge {
@@ -188,6 +203,48 @@ body {
   border-radius: 4px;
   border: 1px solid var(--border-subtle);
   flex-shrink: 0;
+}
+
+.card-group-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: all var(--transition-fast);
+}
+
+.card-group-badge.group-1 {
+  background-color: rgba(239, 68, 68, 0.25);
+  border: 1px solid #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.3);
+}
+
+.card-group-badge.group-2 {
+  background-color: rgba(56, 189, 248, 0.25);
+  border: 1px solid #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.3);
+}
+
+.card-group-badge.group-3 {
+  background-color: rgba(250, 204, 21, 0.25);
+  border: 1px solid #facc15;
+  color: #ffffff;
+  box-shadow: 0 0 6px rgba(250, 204, 21, 0.3);
+}
+
+.card-group-badge.group-4 {
+  background-color: rgba(16, 185, 129, 0.25);
+  border: 1px solid #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
 }
 
 .card-swimmer-name {
@@ -399,10 +456,10 @@ body {
   border-radius: 4px;
 }
 
-/* Actions Toolbar: primary start/pause control plus a smaller stop control */
+/* Actions Toolbar: split start/pause/lap+pause control, stop control, and reset control */
 .card-actions-toolbar {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
 }
 
@@ -437,8 +494,25 @@ body {
   color: var(--text-dim) !important;
 }
 
-.btn-card-start {
+/* Split container for primary start/pause slot */
+.btn-card-split-container {
   flex: 2;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.btn-card-split-container.is-split {
+  flex: 2.4;
+}
+
+.btn-card-split-container .btn-card-action {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.btn-card-start {
   background-color: var(--color-start);
   color: var(--color-lap-text, #060b14);
   border-color: var(--color-start-hover);
@@ -452,14 +526,32 @@ body {
   background-color: var(--color-start-hover);
 }
 
-.btn-card-start.is-running {
+.btn-card-start.is-running,
+.btn-card-pause {
   background-color: var(--color-lap);
   color: var(--color-lap-text, #060b14);
   border-color: var(--color-lap-hover);
 }
 
-.btn-card-start.is-running:hover:not(:disabled) {
+.btn-card-start.is-running:hover:not(:disabled),
+.btn-card-pause:hover:not(:disabled) {
   background-color: var(--color-lap-hover);
+}
+
+.btn-card-lap-pause {
+  background-color: var(--color-pool-bright);
+  color: #060b14;
+  border-color: var(--color-pool-glow);
+  font-weight: 800;
+}
+
+.btn-card-lap-pause svg {
+  stroke: currentColor;
+}
+
+.btn-card-lap-pause:hover:not(:disabled) {
+  background-color: var(--color-pool-vibrant);
+  color: #ffffff;
 }
 
 .btn-card-start.is-paused {
@@ -479,6 +571,17 @@ body {
   background-color: var(--color-stop-hover);
 }
 
+.btn-card-reset {
+  flex: 0.75;
+  background-color: var(--color-reset, #475569);
+  color: var(--color-reset-text, #f8fafc);
+  border-color: var(--color-reset-hover, #64748b);
+}
+
+.btn-card-reset:hover:not(:disabled) {
+  background-color: var(--color-reset-hover, #64748b);
+}
+
 /* Page Footer - Bottom Button "Ver Estadísticas Globales" (R1) */
 .app-footer {
   margin-top: auto;
@@ -486,9 +589,21 @@ body {
   background-color: var(--bg-surface);
   border-top: 1px solid var(--border-default);
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: var(--space-2);
   box-sizing: border-box;
+}
+
+.privacy-disclaimer {
+  font-size: var(--font-xs);
+  color: var(--text-muted, #94a3b8);
+  text-align: center;
+  max-width: 480px;
+  line-height: 1.4;
+  margin: 0;
+  padding: 0 var(--space-2);
 }
 
 .btn-global-stats {
@@ -780,6 +895,120 @@ body {
   margin-top: var(--space-3);
 }
 
+/* Swimmer Drilldown & History View */
+.swimmer-drilldown-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--color-pool-bright, #38bdf8);
+  font-weight: 700;
+  font-size: inherit;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.swimmer-drilldown-btn:hover {
+  color: var(--color-pool-glow, #7dd3fc);
+}
+
+.btn-drilldown-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.drilldown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.drilldown-swimmer-name {
+  font-size: var(--font-lg, 1.25rem);
+  font-weight: 800;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.drilldown-sessions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+.drilldown-session-card {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.drilldown-session-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.drilldown-session-stats {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.drilldown-session-stats strong {
+  color: var(--text-primary);
+}
+
+.btn-lap-delete {
+  width: 28px;
+  height: 28px;
+  color: var(--text-muted, #94a3b8);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-lap-delete:hover {
+  color: var(--color-stop, #ef4444);
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.btn-metrics-edit:hover {
+  color: var(--color-pool-bright, #38bdf8);
+  background-color: var(--bg-surface-elevated);
+}
+
 /* Forms */
 .form-group {
   display: flex;
@@ -917,7 +1146,18 @@ body {
     gap: 4px;
   }
 
+  .card-header-badges {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
   .card-lane-badge {
+    padding: 2px 4px;
+    font-size: 10px;
+  }
+
+  .card-group-badge {
     padding: 2px 4px;
     font-size: 10px;
   }
@@ -976,6 +1216,10 @@ body {
 
   .card-actions-toolbar {
     gap: 4px;
+  }
+
+  .btn-card-split-container {
+    gap: 3px;
   }
 
   .btn-card-action {

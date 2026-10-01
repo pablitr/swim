@@ -67,6 +67,19 @@ export function getElapsedMs(state) {
 export class TimerEngine {
   constructor(repository = defaultRepository) {
     this.repository = repository;
+    this._lapListeners = new Set();
+  }
+
+  /**
+   * Register a listener for recorded laps
+   * @param {Function} listener - Callback invoked with the recorded lap object
+   * @returns {Function} Unsubscribe function
+   */
+  onLap(listener) {
+    if (typeof listener === 'function') {
+      this._lapListeners.add(listener);
+    }
+    return () => this._lapListeners.delete(listener);
   }
 
   /**
@@ -294,6 +307,14 @@ export class TimerEngine {
     } else {
       await this.repository.saveLap(lap);
       await this.repository.saveTimerState(state);
+    }
+
+    for (const listener of this._lapListeners) {
+      try {
+        listener(lap);
+      } catch (err) {
+        console.warn('[TimerEngine] Lap listener error:', err);
+      }
     }
 
     return {

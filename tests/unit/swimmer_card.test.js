@@ -365,4 +365,192 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
       assert.ok(!html.includes(english), `Card must NOT include English button: ${english}`);
     }
   });
+
+  test('TC-SC-207: Group Heat Assignment: cycling groupId 0->1->2->3->4->0 on header click when IDLE/STOPPED, strictly disabled when RUNNING/PAUSED', () => {
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    assert.strictEqual(card.groupId, 0);
+    assert.strictEqual(card._groupBadgeEl.style.display, 'none');
+
+    // Click 1: 0 -> 1 (🔴 G1)
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 1);
+    assert.strictEqual(card._groupBadgeEl.style.display, 'inline-flex');
+    assert.ok(card._groupBadgeEl.textContent.includes('G1'));
+
+    // Click 2: 1 -> 2 (🔵 G2)
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 2);
+    assert.ok(card._groupBadgeEl.textContent.includes('G2'));
+
+    // Click 3: 2 -> 3 (🟡 G3)
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 3);
+    assert.ok(card._groupBadgeEl.textContent.includes('G3'));
+
+    // Click 4: 3 -> 4 (🟢 G4)
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 4);
+    assert.ok(card._groupBadgeEl.textContent.includes('G4'));
+
+    // Click 5: 4 -> 0 (Sin grupo)
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 0);
+    assert.strictEqual(card._groupBadgeEl.style.display, 'none');
+
+    // Cycle back to group 1
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 1);
+
+    // Disable cycling when RUNNING
+    card.timerState.state = TIMER_STATES.RUNNING;
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 1, 'groupId must not change when RUNNING');
+
+    // Disable cycling when PAUSED
+    card.timerState.state = TIMER_STATES.PAUSED;
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 1, 'groupId must not change when PAUSED');
+
+    // Re-enable when STOPPED
+    card.timerState.state = TIMER_STATES.STOPPED;
+    card._headerEl.dispatchEvent({ type: 'click' });
+    assert.strictEqual(card.groupId, 2, 'groupId can cycle when STOPPED');
+  });
+
+  test('TC-SC-208: Group Start: handleStart() dispatches onGroupStart callback when groupId > 0', async () => {
+    let groupStartCalled = false;
+    let receivedGroupId = null;
+    let receivedSwimmerId = null;
+
+    const card = new SwimmerCard({
+      swimmer,
+      groupId: 2,
+      callbacks: {
+        onGroupStart: async (gId, sId) => {
+          groupStartCalled = true;
+          receivedGroupId = gId;
+          receivedSwimmerId = sId;
+        }
+      }
+    });
+    card.render();
+
+    // Standard start with groupId > 0 triggers onGroupStart
+    await card.handleStart();
+    assert.strictEqual(groupStartCalled, true);
+    assert.strictEqual(receivedGroupId, 2);
+    assert.strictEqual(receivedSwimmerId, swimmer.id);
+
+    // When invoked with { isGroupTriggered: true }, does not recurse
+    groupStartCalled = false;
+    await card.handleStart({ isGroupTriggered: true });
+    assert.strictEqual(groupStartCalled, false);
+    assert.strictEqual(card.timerState.state, TIMER_STATES.RUNNING);
+  });
+
+  test('TC-SC-209: Split Pause / Lap+Pause Button: when RUNNING, displays split buttons; handleLapPause() records lap and pauses timer', async () => {
+    await repository.saveSwimmer(swimmer);
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    // Initially in IDLE: Lap-Pause is hidden
+    assert.strictEqual(card._btnLapPauseEl.style.display, 'none');
+
+    // Start timer
+    await card.handleStart();
+    assert.strictEqual(card.timerState.state, TIMER_STATES.RUNNING);
+
+    // Now in RUNNING: Split button is visible and active
+    assert.strictEqual(card._btnLapPauseEl.style.display, 'inline-flex');
+    assert.strictEqual(card._btnLapPauseEl.disabled, false);
+    assert.ok(card._splitContainerEl.classList.contains('is-split'));
+    assert.ok(card._btnStartEl.innerHTML.includes('Pausar'));
+
+    // Tap Lap+Pause
+    await card.handleLapPause();
+
+    // Verifies: lap was recorded AND timer was immediately paused
+    assert.strictEqual(card.laps.length, 1);
+    assert.strictEqual(card.timerState.state, TIMER_STATES.PAUSED);
+    assert.strictEqual(card._stateLabelEl.textContent, 'PAUSADO');
+    assert.ok(card._btnStartEl.innerHTML.includes('Reanudar'));
+    assert.strictEqual(card._btnLapPauseEl.style.display, 'none');
+    assert.ok(!card._splitContainerEl.classList.contains('is-split'));
+
+    // Rapid double-tap debounce protection
+    card.timerState.state = TIMER_STATES.RUNNING;
+    card.lastLapPauseTapTime = Date.now();
+    await card.handleLapPause(); // Should be ignored because < 300ms
+    assert.strictEqual(card.laps.length, 1, 'Debounce must prevent duplicate lap on rapid tap');
+  });
+
+  test('TC-SC-210: Reset Timer: preserves historical laps in repository while resetting card timer to IDLE', async () => {
+    await repository.saveSwimmer(swimmer);
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    await card.handleStart();
+    await card.handleLap();
+    await card.handleLap();
+    assert.strictEqual(card.laps.length, 2);
+
+    // Save lap directly in repository as historical
+    const historicalBefore = await repository.getLaps(swimmer.id);
+    assert.strictEqual(historicalBefore.length, 2);
+
+    // Reset card timer (simulate coach clicking "Reiniciar" on card)
+    await card.handleReset();
+
+    // Card state is reset to IDLE and 00:00.00
+    assert.strictEqual(card.timerState.state, TIMER_STATES.IDLE);
+    assert.strictEqual(card._timeEl.textContent, '00:00.00');
+
+    // Historical laps in repository MUST be preserved
+    const historicalAfter = await repository.getLaps(swimmer.id);
+    assert.strictEqual(historicalAfter.length, 2, 'Historical laps in IndexedDB must not be wiped on card reset');
+  });
+
+  test('TC-SC-211: Multi-Timer Group Launch coordinator logic: starts all IDLE/STOPPED cards in group concurrently', async () => {
+    const swimmer1 = { id: 'swim-grp-1', name: 'Swimmer One', lane: 1 };
+    const swimmer2 = { id: 'swim-grp-2', name: 'Swimmer Two', lane: 2 };
+    const swimmer3 = { id: 'swim-grp-3', name: 'Swimmer Three', lane: 3 };
+
+    await repository.saveSwimmer(swimmer1);
+    await repository.saveSwimmer(swimmer2);
+    await repository.saveSwimmer(swimmer3);
+
+    const card1 = new SwimmerCard({ swimmer: swimmer1, groupId: 1 });
+    const card2 = new SwimmerCard({ swimmer: swimmer2, groupId: 1 });
+    const card3 = new SwimmerCard({ swimmer: swimmer3, groupId: 2 });
+
+    card1.render();
+    card2.render();
+    card3.render();
+
+    const cardsMap = new Map([
+      [card1.swimmer.id, card1],
+      [card2.swimmer.id, card2],
+      [card3.swimmer.id, card3]
+    ]);
+
+    // Simulate AppCoordinator.handleGroupStart(1)
+    const groupId = 1;
+    const targetCards = [];
+    for (const card of cardsMap.values()) {
+      if (card.groupId === groupId &&
+          (card.timerState.state === TIMER_STATES.IDLE || card.timerState.state === TIMER_STATES.STOPPED)) {
+        targetCards.push(card);
+      }
+    }
+    await Promise.all(targetCards.map(c => c.handleStart({ isGroupTriggered: true })));
+
+    // Card 1 and Card 2 (Group 1) are running
+    assert.strictEqual(card1.timerState.state, TIMER_STATES.RUNNING);
+    assert.strictEqual(card2.timerState.state, TIMER_STATES.RUNNING);
+
+    // Card 3 (Group 2) remains IDLE
+    assert.strictEqual(card3.timerState.state, TIMER_STATES.IDLE);
+  });
 });

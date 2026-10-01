@@ -62,10 +62,14 @@ export class ModalManager {
   /**
    * Open modal in Add or Edit mode
    * @param {Object|null} swimmer - If provided, opens in edit mode
+   * @param {Function|null} [customOnSave] - Optional callback triggered on save
    */
-  open(swimmer = null) {
+  open(swimmer = null, customOnSave = null) {
     if (!this.modalEl) this.init();
     if (!this.modalEl) return;
+
+    this.customOnSave = typeof customOnSave === 'function' ? customOnSave : null;
+    this.modalEl.style.zIndex = '300';
 
     if (swimmer && swimmer.id) {
       if (this.titleEl) this.titleEl.textContent = 'Editar Nadador';
@@ -97,7 +101,9 @@ export class ModalManager {
     if (!this.modalEl) return;
     this.modalEl.classList.remove('open');
     this.modalEl.setAttribute('aria-hidden', 'true');
+    this.modalEl.style.zIndex = '';
     this.isOpen = false;
+    this.customOnSave = null;
     if (this.formEl) this.formEl.reset();
   }
 
@@ -137,6 +143,10 @@ export class ModalManager {
       swimmerData.id = id;
     }
 
+    if (this.customOnSave) {
+      await this.customOnSave(swimmerData);
+    }
+
     if (this.onSaveCallback) {
       await this.onSaveCallback(swimmerData);
     }
@@ -150,6 +160,7 @@ export class ModalManager {
    */
   _handleKeyDown(e) {
     if (e.key === 'Escape' && this.isOpen) {
+      if (e.stopPropagation) e.stopPropagation();
       this.close();
     }
   }

@@ -1,10 +1,9 @@
-// MetricsModal - Panel de Métricas Individuales por Nadador
-// Se abre desde la lupa de cada tarjeta. Cierra tocando el overlay o el botón X.
-
 import { formatTime } from '../timing/timer-engine.js';
 import { computeSustainablePace } from '../analytics/pace-calculator.js';
 import { calculateTrainingZones } from '../analytics/zones.js';
 import { renderBoxplot } from './boxplot-svg.js';
+import { repository } from '../storage/repository.js';
+import { modalManager } from './modal.js';
 
 class MetricsModal {
   constructor() {
@@ -13,25 +12,101 @@ class MetricsModal {
     this.laneEl = null;
     this.bodyEl = null;
     this.closeBtn = null;
+    this.editBtn = null;
     this.swimmer = null;
     this.laps = [];
     this.callbacks = {};
+    this._editBound = false;
     this._bound_close = this._close.bind(this);
     this._bound_overlayClick = this._overlayClick.bind(this);
     this._bound_keyDown = this._keyDown.bind(this);
+    this._handleEditSwimmer = this._handleEditSwimmer.bind(this);
+    this._handleDeleteLap = this._handleDeleteLap.bind(this);
   }
 
   _init() {
-    if (this.modalEl) return;
-    this.modalEl = document.getElementById('metrics-modal');
-    this.titleEl = document.getElementById('metrics-modal-title');
-    this.laneEl = document.getElementById('metrics-modal-lane');
-    this.bodyEl = document.getElementById('metrics-modal-body');
-    this.closeBtn = document.getElementById('metrics-modal-close');
+    if (!this.modalEl) {
+      this.modalEl = document.getElementById('metrics-modal');
+      this.titleEl = document.getElementById('metrics-modal-title');
+      this.laneEl = document.getElementById('metrics-modal-lane');
+      this.bodyEl = document.getElementById('metrics-modal-body');
+      this.closeBtn = document.getElementById('metrics-modal-close');
+      this.editBtn = document.getElementById('metrics-modal-edit');
 
-    if (this.closeBtn) this.closeBtn.addEventListener('click', this._bound_close);
-    if (this.modalEl) this.modalEl.addEventListener('click', this._bound_overlayClick);
-    document.addEventListener('keydown', this._bound_keyDown);
+      if (this.closeBtn) this.closeBtn.addEventListener('click', this._bound_close);
+      if (this.modalEl) this.modalEl.addEventListener('click', this._bound_overlayClick);
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        document.addEventListener('keydown', this._bound_keyDown);
+      }
+    }
+
+    if (!this.editBtn) {
+      this.editBtn = document.getElementById('metrics-modal-edit');
+    }
+    if (this.editBtn && !this._editBound) {
+      this.editBtn.addEventListener('click', () => this._handleEditSwimmer());
+      this._editBound = true;
+    }
+  }
+
+  _handleEditSwimmer() {
+    if (!this.swimmer) return;
+    modalManager.open(this.swimmer, async (updatedData) => {
+      this.swimmer = { ...this.swimmer, ...updatedData };
+      if (repository && typeof repository.saveSwimmer === 'function') {
+        try {
+          await repository.saveSwimmer(this.swimmer);
+        } catch (err) {
+          console.error('[MetricsModal] Error al guardar nadador:', err);
+        }
+      }
+      if (this.laneEl) this.laneEl.textContent = `C${this.swimmer.lane ?? '-'}`;
+      if (this.titleEl) this.titleEl.textContent = this.swimmer.name || 'Nadador';
+      this._renderBody(this.swimmer, this.laps);
+      if (this.callbacks && typeof this.callbacks.onEdit === 'function') {
+        try {
+          await this.callbacks.onEdit(this.swimmer);
+        } catch (err) {
+          console.error('[MetricsModal] Error en callback onEdit:', err);
+        }
+      }
+    });
+  }
+
+  async _handleDeleteLap(lapId, lapNum) {
+    if (!lapId && !lapNum) return;
+    if (lapId && repository && typeof repository.deleteLap === 'function') {
+      try {
+        await repository.deleteLap(lapId);
+      } catch (err) {
+        console.error('[MetricsModal] Error al borrar pase de IndexedDB:', err);
+      }
+    }
+
+    // Deliberate gap preservation: remaining laps retain original lap.lapNumber values
+    this.laps = this.laps.filter(l => (lapId ? l.id !== lapId : String(l.lapNumber) !== String(lapNum)));
+
+    // If the deleted lap was the latest recorded lap, update timerState.lastLapCumulativeMs
+    if (this.swimmer && this.swimmer.id && repository && typeof repository.getTimerState === 'function') {
+      try {
+        const state = await repository.getTimerState(this.swimmer.id);
+        if (state) {
+          const lastLap = this.laps.length > 0 ? this.laps[this.laps.length - 1] : null;
+          state.lastLapCumulativeMs = lastLap ? lastLap.cumulativeDurationMs : 0;
+          await repository.saveTimerState(state);
+        }
+      } catch (_) {}
+    }
+
+    if (this.callbacks && typeof this.callbacks.onDeleteLap === 'function') {
+      try {
+        await this.callbacks.onDeleteLap(lapId, lapNum);
+      } catch (err) {
+        console.error('[MetricsModal] Error en callback onDeleteLap:', err);
+      }
+    }
+
+    this._renderBody(this.swimmer, this.laps);
   }
 
   /**
@@ -150,13 +225,21 @@ class MetricsModal {
           <td><strong>#${lap.lapNumber}</strong>${lap.isOutlier ? ' <span class="outlier-pill">ATÍPICO</span>' : ''}</td>
           <td>${formatTime(lap.splitDurationMs)}</td>
           <td>${formatTime(lap.cumulativeDurationMs)}</td>
+          <td style="text-align: right; width: 36px;">
+            <button type="button" class="btn-icon btn-lap-delete" data-lap-id="${lap.id || ''}" data-lap-number="${lap.lapNumber}" aria-label="Eliminar pase #${lap.lapNumber}" title="Eliminar pase #${lap.lapNumber}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          </td>
         </tr>`).join('');
 
       lapsHTML = `
         <div class="modal-section-title">Historial de Pases</div>
         <div class="laps-table-wrapper">
           <table class="laps-table">
-            <thead><tr><th>#</th><th>Parcial</th><th>Acumulado</th></tr></thead>
+            <thead><tr><th>#</th><th>Parcial</th><th>Acumulado</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -177,6 +260,17 @@ class MetricsModal {
           Eliminar nadador
         </button>
       </div>`;
+
+    const deleteLapBtns = this.bodyEl.querySelectorAll('.btn-lap-delete');
+    deleteLapBtns.forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        const lapId = btn.dataset.lapId;
+        const lapNum = btn.dataset.lapNumber;
+        await this._handleDeleteLap(lapId, lapNum);
+      });
+    });
 
     const resetButton = this.bodyEl.querySelector('#metrics-reset-session');
     if (resetButton) {

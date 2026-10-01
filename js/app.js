@@ -6,6 +6,8 @@ import { timerEngine, formatTime, TIMER_STATES } from './timing/timer-engine.js'
 import { SwimmerCard } from './ui/swimmer-card.js';
 import { modalManager } from './ui/modal.js';
 import { computeSustainablePace } from './analytics/pace-calculator.js';
+import { renderBoxplotSVG } from './ui/boxplot-svg.js';
+import { telemetryService } from './telemetry/telemetry.js';
 
 const TIMER_STATE_LABELS_ES = {
   [TIMER_STATES.IDLE]: 'Listo',
@@ -14,11 +16,42 @@ const TIMER_STATE_LABELS_ES = {
   [TIMER_STATES.STOPPED]: 'Detenido'
 };
 
+/**
+ * Partitions chronological laps into training sessions by reset or >20 min time gap
+ * @param {Array} allLaps
+ * @returns {Array<Array>}
+ */
+function partitionLapsIntoSessions(allLaps) {
+  if (!allLaps || allLaps.length === 0) return [];
+  const sorted = [...allLaps].sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+  const sessions = [];
+  let currentSession = [];
+
+  for (let i = 0; i < sorted.length; i++) {
+    const lap = sorted[i];
+    if (currentSession.length > 0) {
+      const prevLap = currentSession[currentSession.length - 1];
+      const isNewLapNumber = (lap.lapNumber === 1 && prevLap.lapNumber !== 1) || (lap.lapNumber <= prevLap.lapNumber);
+      const isTimeGap = Boolean(lap.timestamp && prevLap.timestamp && (lap.timestamp - prevLap.timestamp > 20 * 60 * 1000));
+      if (isNewLapNumber || isTimeGap) {
+        sessions.push(currentSession);
+        currentSession = [];
+      }
+    }
+    currentSession.push(lap);
+  }
+  if (currentSession.length > 0) {
+    sessions.push(currentSession);
+  }
+  return sessions;
+}
+
 class AppCoordinator {
   constructor() {
     this.cards = new Map();
     this.gridEl = null;
     this.globalStatsModalEl = null;
+    this.telemetryService = telemetryService;
 
     this.handleMasterStart = this.handleMasterStart.bind(this);
     this.handleMasterStop = this.handleMasterStop.bind(this);
@@ -27,6 +60,8 @@ class AppCoordinator {
     this.handleDeleteSwimmer = this.handleDeleteSwimmer.bind(this);
     this.showGlobalStats = this.showGlobalStats.bind(this);
     this.closeGlobalStats = this.closeGlobalStats.bind(this);
+    this.showSwimmerDrillDown = this.showSwimmerDrillDown.bind(this);
+    this._escapeHtml = this._escapeHtml.bind(this);
     this._handleKeyDown = this._handleKeyDown.bind(this);
   }
 
@@ -40,6 +75,12 @@ class AppCoordinator {
     // 1. Initialize IndexedDB storage and timing engine
     await repository.init();
     await timerEngine.init(repository);
+
+    // Initialize telemetry and wire observer
+    telemetryService.init();
+    timerEngine.onLap((lap) => {
+      telemetryService.enqueueLap(lap);
+    });
 
     // 2. Wire up Header & Global Controls
     const btnStartAll = document.getElementById('btn-master-start');
@@ -119,14 +160,18 @@ class AppCoordinator {
       };
 
       const laps = await repository.getLaps(swimmer.id);
+      const existingCard = this.cards.get(swimmer.id);
+      const groupId = existingCard ? existingCard.groupId : 0;
 
       const card = new SwimmerCard({
         swimmer,
         timerState,
         laps,
+        groupId,
         callbacks: {
           onEdit: (swimmerData) => modalManager.open(swimmerData),
           onDelete: (swimmerId) => this.handleDeleteSwimmer(swimmerId),
+          onGroupStart: (gId, sourceSwimmerId) => this.handleGroupStart(gId, sourceSwimmerId),
           onClearLaps: (swimmerId) => {
             console.log(`[App] Vueltas borradas para nadador ${swimmerId}`);
           },
@@ -173,7 +218,11 @@ class AppCoordinator {
       return `
         <tr>
           <td><strong>C${swimmer.lane ?? '-'}</strong></td>
-          <td>${card._escapeHtml(swimmer.name)}</td>
+          <td>
+            <button type="button" class="swimmer-drilldown-btn" data-swimmer-id="${swimmer.id}">
+              ${this._escapeHtml(swimmer.name)}
+            </button>
+          </td>
           <td><span class="status-indicator">${TIMER_STATE_LABELS_ES[card.timerState.state] || card.timerState.state}</span></td>
           <td>${laps.length}</td>
           <td>${best}</td>
@@ -228,6 +277,14 @@ class AppCoordinator {
 
     const exportButton = document.getElementById('btn-export-csv');
     if (exportButton) exportButton.addEventListener('click', () => this.exportCsv());
+
+    const drilldownBtns = contentEl.querySelectorAll('.swimmer-drilldown-btn');
+    drilldownBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const swimmerId = btn.dataset.swimmerId;
+        if (swimmerId) this.showSwimmerDrillDown(swimmerId);
+      });
+    });
 
     this.globalStatsModalEl.classList.add('open');
     if (typeof this.globalStatsModalEl.setAttribute === 'function') {
@@ -310,13 +367,208 @@ class AppCoordinator {
   }
 
   /**
+   * Escape special HTML characters to prevent XSS
+   * @param {string} str
+   * @returns {string}
+   */
+  _escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Shows detailed historical drill-down for an individual swimmer
+   * @param {string} swimmerId
+   */
+  async showSwimmerDrillDown(swimmerId) {
+    if (!this.globalStatsModalEl) return;
+    const contentEl = document.getElementById('global-stats-content');
+    if (!contentEl) return;
+
+    let swimmer = this.cards.get(swimmerId)?.swimmer;
+    if (!swimmer && repository && typeof repository.getSwimmer === 'function') {
+      try {
+        swimmer = await repository.getSwimmer(swimmerId);
+      } catch (_) {}
+    }
+
+    let allLaps = [];
+    if (repository && typeof repository.getLaps === 'function') {
+      try {
+        allLaps = await repository.getLaps(swimmerId);
+      } catch (_) {}
+    }
+    if ((!allLaps || allLaps.length === 0) && this.cards.has(swimmerId)) {
+      allLaps = this.cards.get(swimmerId).laps || [];
+    }
+
+    // Accumulators for current month and current year
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+
+    const monthLaps = allLaps.filter(l => {
+      if (!l.timestamp) return false;
+      const d = new Date(l.timestamp);
+      return !isNaN(d.getTime()) && d.getFullYear() === curYear && d.getMonth() === curMonth;
+    });
+
+    const yearLaps = allLaps.filter(l => {
+      if (!l.timestamp) return false;
+      const d = new Date(l.timestamp);
+      return !isNaN(d.getTime()) && d.getFullYear() === curYear;
+    });
+
+    const monthVolMeters = monthLaps.length * 50;
+    const yearVolMeters = yearLaps.length * 50;
+
+    // Partition laps into training sessions
+    const sessions = partitionLapsIntoSessions(allLaps);
+    const recentSessions = sessions.slice(-5).reverse();
+
+    let sessionsHTML = '';
+    if (recentSessions.length > 0) {
+      sessionsHTML = recentSessions.map((session, sIdx) => {
+        let dateLabel = `Sesión ${sessions.length - sIdx}`;
+        if (session[0]?.timestamp) {
+          const d = new Date(session[0].timestamp);
+          if (!isNaN(d.getTime())) {
+            dateLabel = d.toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+          }
+        }
+        const splitsSeconds = session.map(l => l.splitDurationMs / 1000);
+        const bestSplitMs = Math.min(...session.map(l => l.splitDurationMs));
+        const paceData = computeSustainablePace(splitsSeconds);
+        const paceStr = (paceData.sustainablePace != null)
+          ? `${paceData.sustainablePace.toFixed(2)}s`
+          : '--';
+
+        const baselineVal = swimmer?.baseline100mSeconds ? Number(swimmer.baseline100mSeconds) : undefined;
+        const boxplotMarkup = renderBoxplotSVG(splitsSeconds, {
+          baseline: baselineVal,
+          width: 440,
+          height: 75
+        });
+
+        return `
+          <div class="drilldown-session-card">
+            <div class="drilldown-session-meta">
+              <strong>${dateLabel}</strong>
+              <span>${session.length} ${session.length === 1 ? 'pase' : 'pases'}</span>
+            </div>
+            <div class="drilldown-session-stats">
+              <span>Mejor: <strong>${formatTime(bestSplitMs)}</strong></span>
+              <span>Ritmo: <strong>${paceStr}</strong></span>
+            </div>
+            <div class="drilldown-session-chart">
+              ${boxplotMarkup}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      sessionsHTML = `
+        <div class="empty-state-notice" style="text-align:center; padding: 24px; color: var(--text-muted); font-size: var(--font-sm);">
+          Sin sesiones de entrenamiento registradas aún para este nadador.
+        </div>
+      `;
+    }
+
+    const swimmerName = swimmer ? this._escapeHtml(swimmer.name) : 'Nadador';
+    const swimmerLane = swimmer?.lane != null ? `C${swimmer.lane}` : 'C-';
+    const baselineText = swimmer?.baseline100mSeconds
+      ? `${Number(swimmer.baseline100mSeconds).toFixed(1)}s`
+      : 'Sin configurar';
+
+    contentEl.innerHTML = `
+      <div class="drilldown-nav">
+        <button type="button" id="btn-drilldown-back" class="btn-secondary btn-drilldown-back">
+          ← Volver a Estadísticas Globales
+        </button>
+      </div>
+
+      <div class="drilldown-header">
+        <div class="drilldown-swimmer-name">
+          <span class="card-lane-badge">${swimmerLane}</span>
+          <span>${swimmerName}</span>
+        </div>
+        <div style="font-size: var(--font-xs); color: var(--text-muted);">
+          Tiempo base 100m: <strong>${baselineText}</strong>
+        </div>
+      </div>
+
+      <div class="modal-section-title">Acumulados de Rendimiento</div>
+      <div class="stats-summary-grid">
+        <div class="metric-box">
+          <div class="metric-label">Pases Este Mes</div>
+          <div class="metric-value">${monthLaps.length}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Volumen Este Mes</div>
+          <div class="metric-value">${monthVolMeters.toLocaleString('es-ES')} m</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Pases Este Año</div>
+          <div class="metric-value">${yearLaps.length}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Volumen Este Año</div>
+          <div class="metric-value">${yearVolMeters.toLocaleString('es-ES')} m</div>
+        </div>
+      </div>
+
+      <div class="modal-section-title" style="margin-top: var(--space-3);">Últimas Sesiones de Entrenamiento (Hasta 5)</div>
+      <div class="drilldown-sessions-stack">
+        ${sessionsHTML}
+      </div>
+    `;
+
+    const backBtn = contentEl.querySelector('#btn-drilldown-back');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => this.showGlobalStats());
+    }
+
+    this.globalStatsModalEl.classList.add('open');
+    if (typeof this.globalStatsModalEl.setAttribute === 'function') {
+      this.globalStatsModalEl.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  /**
+   * Multi-Group Heats: Concurrently starts (via Promise.all) all IDLE or STOPPED cards with matching groupId
+   * @param {number} groupId
+   * @param {string} [sourceSwimmerId]
+   */
+  async handleGroupStart(groupId, sourceSwimmerId) {
+    if (!groupId) return;
+    const targetCards = [];
+    for (const card of this.cards.values()) {
+      if (card.groupId === groupId &&
+          (card.timerState.state === TIMER_STATES.IDLE || card.timerState.state === TIMER_STATES.STOPPED)) {
+        targetCards.push(card);
+      }
+    }
+    await Promise.all(targetCards.map(c => c.handleStart({ isGroupTriggered: true })));
+  }
+
+  /**
    * Master Control: Start all timers simultaneously
    */
   async handleMasterStart() {
     const promises = [];
     for (const card of this.cards.values()) {
       if (card.timerState.state === TIMER_STATES.IDLE || card.timerState.state === TIMER_STATES.STOPPED) {
-        promises.push(card.handleStart());
+        promises.push(card.handleStart({ isGroupTriggered: true }));
       } else if (card.timerState.state === TIMER_STATES.PAUSED) {
         promises.push(card.handleResume());
       }
@@ -408,6 +660,7 @@ class AppCoordinator {
 
 // Automatically bootstrap when DOM is ready
 export const app = new AppCoordinator();
+export { telemetryService };
 
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
