@@ -60,8 +60,8 @@ export function renderBoxplotSVG(lapsSeconds, options = {}) {
   const plotRight = width - 32;
   const plotWidth = plotRight - plotLeft;
 
-  let scaleMin = stats.min;
-  let scaleMax = stats.max;
+  let scaleMin = options.globalMin !== undefined ? options.globalMin : stats.min;
+  let scaleMax = options.globalMax !== undefined ? options.globalMax : stats.max;
 
   if (scaleMin === scaleMax) {
     scaleMin -= 1;

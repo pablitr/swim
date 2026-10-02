@@ -429,10 +429,24 @@ class AppCoordinator {
 
     // Partition laps into training sessions
     const sessions = partitionLapsIntoSessions(allLaps);
-    const recentSessions = sessions.slice(-5).reverse();
+    const recentSessions = sessions.slice(-20).reverse();
 
     let sessionsHTML = '';
     if (recentSessions.length > 0) {
+      let globalMin = Infinity;
+      let globalMax = -Infinity;
+      for (const session of recentSessions) {
+        for (const lap of session) {
+          const sec = lap.splitDurationMs / 1000;
+          if (sec < globalMin) globalMin = sec;
+          if (sec > globalMax) globalMax = sec;
+        }
+      }
+      if (globalMin === Infinity) {
+        globalMin = 0;
+        globalMax = 0;
+      }
+
       sessionsHTML = recentSessions.map((session, sIdx) => {
         let dateLabel = `Sesión ${sessions.length - sIdx}`;
         if (session[0]?.timestamp) {
@@ -457,7 +471,9 @@ class AppCoordinator {
         const boxplotMarkup = renderBoxplotSVG(splitsSeconds, {
           baseline: baselineVal,
           width: 440,
-          height: 75
+          height: 75,
+          globalMin: globalMin,
+          globalMax: globalMax
         });
 
         return `

@@ -324,10 +324,10 @@ describe('Challenger M2: Empirical Adversarial Challenge Suite', () => {
       const contentEl = domElements.get('global-stats-content');
 
       const sessionCards = contentEl.querySelectorAll('.drilldown-session-card');
-      assert.equal(sessionCards.length, 5, 'Must render exactly 5 session cards');
+      assert.equal(sessionCards.length, 7, 'Must render exactly 7 session cards');
 
       const sessionBlocks = contentEl.innerHTML.split('<div class="drilldown-session-card">').slice(1);
-      assert.equal(sessionBlocks.length, 5);
+      assert.equal(sessionBlocks.length, 7);
       assert.ok(sessionBlocks[0].includes('4 pases'), 'First rendered must be S7 (4 pases)');
       assert.ok(sessionBlocks[1].includes('3 pases'), 'Second rendered must be S6 (3 pases)');
       assert.ok(sessionBlocks[2].includes('6 pases'), 'Third rendered must be S5 (6 pases)');
@@ -336,7 +336,7 @@ describe('Challenger M2: Empirical Adversarial Challenge Suite', () => {
 
       // Validate SVG outputs
       const svgMatches = contentEl.innerHTML.match(/<svg[^>]*class="[^"]*boxplot-svg[^"]*"[^>]*>[\s\S]*?<\/svg>/g);
-      assert.ok(svgMatches && svgMatches.length === 5, 'Must contain 5 valid boxplot SVG elements');
+      assert.ok(svgMatches && svgMatches.length === 7, 'Must contain 7 valid boxplot SVG elements');
 
       svgMatches.forEach((svgStr, idx) => {
         assert.ok(!svgStr.includes('NaN'), `SVG #${idx + 1} must not contain NaN`);
