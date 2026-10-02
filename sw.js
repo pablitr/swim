@@ -1,7 +1,7 @@
 // Service Worker for SwimCoach Tracker PWA
 // Provides offline capability via Cache-First strategy for static assets.
 
-const CACHE_NAME = 'swimcoach-v5';
+const CACHE_NAME = 'swimcoach-v6';
 
 const PRECACHE_URLS = [
   './',

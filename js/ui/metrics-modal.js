@@ -32,6 +32,7 @@ class MetricsModal {
       this.bodyEl = document.getElementById('metrics-modal-body');
       this.closeBtn = document.getElementById('metrics-modal-close');
       this.editBtn = document.getElementById('metrics-modal-edit');
+      this.resetBtn = document.getElementById('metrics-modal-reset');
 
       if (this.closeBtn) this.closeBtn.addEventListener('click', this._bound_close);
       if (this.modalEl) this.modalEl.addEventListener('click', this._bound_overlayClick);
@@ -46,6 +47,28 @@ class MetricsModal {
     if (this.editBtn && !this._editBound) {
       this.editBtn.addEventListener('click', () => this._handleEditSwimmer());
       this._editBound = true;
+    }
+    
+    if (!this.resetBtn) {
+      this.resetBtn = document.getElementById('metrics-modal-reset');
+    }
+    if (this.resetBtn && !this._resetBound) {
+      this.resetBtn.addEventListener('click', async () => {
+        const swimmerName = this.swimmer?.name || 'este nadador';
+        const confirmed = window.confirm(
+          `¿Quieres reiniciar el cronómetro de ${swimmerName}?`
+        );
+        if (!confirmed || typeof this.callbacks.onReset !== 'function') return;
+
+        try {
+          const updatedLaps = await this.callbacks.onReset();
+          this.laps = Array.isArray(updatedLaps) ? updatedLaps : [];
+          this._renderBody(this.swimmer, this.laps);
+        } catch (err) {
+          console.error('[MetricsModal] No se pudo reiniciar:', err);
+        }
+      });
+      this._resetBound = true;
     }
   }
 

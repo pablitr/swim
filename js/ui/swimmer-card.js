@@ -141,11 +141,6 @@ export class SwimmerCard {
           ${ICON_STOP}
           <span class="btn-action-label">Detener</span>
         </button>
-
-        <button class="btn-card-action btn-card-reset" id="btn-reset-${this.swimmer.id}" aria-label="Reiniciar cronómetro" disabled>
-          ${ICON_RESET}
-          <span class="btn-action-label">Reiniciar</span>
-        </button>
       </div>
     `;
 
@@ -287,7 +282,20 @@ export class SwimmerCard {
       await this.callbacks.onGroupStart(this.groupId, this.swimmer.id);
       return;
     }
+    
+    const needsClear = this.timerState.state === TIMER_STATES.STOPPED || this.laps.length > 0;
     this.timerState = await timerEngine.start(this.swimmer.id);
+    
+    if (needsClear) {
+      if (typeof repository !== 'undefined' && typeof repository.clearLaps === 'function') {
+        await repository.clearLaps(this.swimmer.id);
+      }
+      this.laps = [];
+      if (this.callbacks.onClearLaps) {
+        this.callbacks.onClearLaps(this.swimmer.id);
+      }
+    }
+
     ticker.subscribe(`swimmer-${this.swimmer.id}`, this.updateTimeDisplay);
     this.updateUI();
     if (this.callbacks.onTimerChange) this.callbacks.onTimerChange(this.swimmer.id, this.timerState);

@@ -503,7 +503,7 @@ body {
 }
 
 .btn-card-split-container.is-split {
-  flex: 2.4;
+  flex: 2;
 }
 
 .btn-card-split-container .btn-card-action {
