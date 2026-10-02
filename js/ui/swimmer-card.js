@@ -244,11 +244,17 @@ export class SwimmerCard {
 
     // Lupa = abrir modal de métricas
     if (this._btnLupaEl) {
-      this._btnLupaEl.addEventListener('click', (e) => {
+      this._btnLupaEl.addEventListener('click', async (e) => {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
-        metricsModal.open(this.swimmer, this.laps, {
-          onReset: () => this.handleReset({ clearHistorical: true }),
+        
+        let allLaps = this.laps;
+        if (typeof repository !== 'undefined' && typeof repository.getLaps === 'function') {
+          allLaps = await repository.getLaps(this.swimmer.id) || this.laps;
+        }
+
+        metricsModal.open(this.swimmer, allLaps, {
+          onReset: () => this.handleReset({ clearHistorical: false }),
           canReset: () => this.timerState.state !== TIMER_STATES.IDLE || this.laps.length > 0,
           onDelete: this.callbacks.onDelete,
           onEdit: (updatedSwimmer) => {
@@ -283,18 +289,7 @@ export class SwimmerCard {
       return;
     }
     
-    const needsClear = this.timerState.state === TIMER_STATES.STOPPED || this.laps.length > 0;
     this.timerState = await timerEngine.start(this.swimmer.id);
-    
-    if (needsClear) {
-      if (typeof repository !== 'undefined' && typeof repository.clearLaps === 'function') {
-        await repository.clearLaps(this.swimmer.id);
-      }
-      this.laps = [];
-      if (this.callbacks.onClearLaps) {
-        this.callbacks.onClearLaps(this.swimmer.id);
-      }
-    }
 
     ticker.subscribe(`swimmer-${this.swimmer.id}`, this.updateTimeDisplay);
     this.updateUI();
@@ -542,10 +537,7 @@ export class SwimmerCard {
 
   _updateLapCount() {
     if (this._lapCountEl) {
-      const maxLapNum = this.laps.length > 0
-        ? Math.max(...this.laps.map(l => Number(l.lapNumber) || 0))
-        : 0;
-      const nextLap = Math.max(Number(this.timerState?.currentLapIndex) || 1, maxLapNum + 1);
+      const nextLap = Number(this.timerState?.currentLapIndex) || 1;
       this._lapCountEl.textContent = `V${nextLap}`;
     }
   }
