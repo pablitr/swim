@@ -98,13 +98,13 @@ export class Ticker {
     if (this.lastFrameTime === 0 || elapsed >= this.frameInterval - 2) {
       this.lastFrameTime = now;
 
-      for (const [id, callback] of this.subscribers.entries()) {
+      this.subscribers.forEach((callback, id) => {
         try {
           callback(now);
         } catch (err) {
           console.error(`[Ticker] Error de suscriptor (${id}):`, err);
         }
-      }
+      });
     }
 
     if (this.subscribers.size === 0) {

@@ -434,7 +434,10 @@ export class SwimmerCard {
     this._updateSwimmerInfo();
 
     // Estado de la tarjeta (borde de color)
-    this.element.className = `swimmer-card ${this._getCardStateClass()}`.trim();
+    const newClass = `swimmer-card ${this._getCardStateClass()}`.trim();
+    if (this.element.className !== newClass) {
+      this.element.className = newClass;
+    }
 
     // Tiempo actual con dirty check
     const timeIsRunning = this.timerState.state === TIMER_STATES.RUNNING;
@@ -570,18 +573,22 @@ export class SwimmerCard {
       { id: 4, text: '🟢 G4' }
     ];
     const group = GROUP_CONFIG[this.groupId] || GROUP_CONFIG[0];
+    
     if (this.groupId > 0) {
-      this._groupBadgeEl.style.display = 'inline-flex';
-      this._groupBadgeEl.textContent = group.text;
-      this._groupBadgeEl.className = `card-group-badge group-${this.groupId}`;
-      if (this.element && this.element.dataset) {
+      if (this._groupBadgeEl.style.display !== 'inline-flex') this._groupBadgeEl.style.display = 'inline-flex';
+      if (this._groupBadgeEl.textContent !== group.text) this._groupBadgeEl.textContent = group.text;
+      const expectedClass = `card-group-badge group-${this.groupId}`;
+      if (this._groupBadgeEl.className !== expectedClass) this._groupBadgeEl.className = expectedClass;
+      
+      if (this.element && this.element.dataset && this.element.dataset.groupId !== String(this.groupId)) {
         this.element.dataset.groupId = String(this.groupId);
       }
     } else {
-      this._groupBadgeEl.style.display = 'none';
-      this._groupBadgeEl.textContent = '';
-      this._groupBadgeEl.className = 'card-group-badge';
-      if (this.element && this.element.dataset) {
+      if (this._groupBadgeEl.style.display !== 'none') this._groupBadgeEl.style.display = 'none';
+      if (this._groupBadgeEl.textContent !== '') this._groupBadgeEl.textContent = '';
+      if (this._groupBadgeEl.className !== 'card-group-badge') this._groupBadgeEl.className = 'card-group-badge';
+      
+      if (this.element && this.element.dataset && this.element.dataset.groupId !== undefined) {
         delete this.element.dataset.groupId;
       }
     }
