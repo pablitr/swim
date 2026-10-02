@@ -15,12 +15,11 @@ export const TIMER_STATES = Object.freeze({
  * @param {number} ms - Milliseconds to format
  * @returns {string} Formatted digital stopwatch string
  */
-export function formatTime(ms) {
+export function formatTime(ms, showCentiseconds = true) {
   if (ms === null || ms === undefined || isNaN(ms) || ms < 0) {
     ms = 0;
   }
   const totalMs = Math.floor(ms);
-  const centis = Math.floor((totalMs % 1000) / 10);
   const totalSeconds = Math.floor(totalMs / 1000);
   const seconds = totalSeconds % 60;
   const totalMinutes = Math.floor(totalSeconds / 60);
@@ -29,10 +28,19 @@ export function formatTime(ms) {
 
   const pad = (n, len = 2) => String(n).padStart(len, '0');
 
-  if (hours > 0) {
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(centis)}`;
+  let decimalPart;
+  if (showCentiseconds) {
+    const centis = Math.floor((totalMs % 1000) / 10);
+    decimalPart = `.${pad(centis)}`;
+  } else {
+    const tenths = Math.floor((totalMs % 1000) / 100);
+    decimalPart = `.${tenths}`;
   }
-  return `${pad(minutes)}:${pad(seconds)}.${pad(centis)}`;
+
+  if (hours > 0) {
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}${decimalPart}`;
+  }
+  return `${pad(minutes)}:${pad(seconds)}${decimalPart}`;
 }
 
 /**

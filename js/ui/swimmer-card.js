@@ -373,7 +373,8 @@ export class SwimmerCard {
    */
   updateTimeDisplay() {
     if (!this._timeEl) return;
-    const timeStr = formatTime(timerEngine.getElapsedMs(this.timerState));
+    const isRunning = this.timerState.state === TIMER_STATES.RUNNING;
+    const timeStr = formatTime(timerEngine.getElapsedMs(this.timerState), !isRunning);
     if (this._lastTimeStr !== timeStr) {
       this._timeEl.textContent = timeStr;
       this._lastTimeStr = timeStr;
@@ -436,7 +437,8 @@ export class SwimmerCard {
     this.element.className = `swimmer-card ${this._getCardStateClass()}`.trim();
 
     // Tiempo actual con dirty check
-    const timeStr = formatTime(timerEngine.getElapsedMs(this.timerState));
+    const timeIsRunning = this.timerState.state === TIMER_STATES.RUNNING;
+    const timeStr = formatTime(timerEngine.getElapsedMs(this.timerState), !timeIsRunning);
     if (this._timeEl) {
       this._timeEl.textContent = timeStr;
       this._lastTimeStr = timeStr;

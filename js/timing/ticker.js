@@ -116,5 +116,5 @@ export class Ticker {
   }
 }
 
-export const ticker = new Ticker();
+export const ticker = new Ticker(30);
 export default ticker;
