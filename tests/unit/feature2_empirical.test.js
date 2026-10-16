@@ -369,7 +369,7 @@ describe('Empirical Verification: Feature 2 — Split "Pause / Lap+Pause" Button
   // =========================================================================
   // Verification 5: Resetting to 00:00.00 and IDLE while preserving persisted laps
   // =========================================================================
-  test.skip('EMP-F2-05: Tapping "Reiniciar" resets display to 00:00.00 and timer to IDLE while preserving persisted laps', async () => {
+  test('EMP-F2-05: Calling handleReset() resets display to 00:00.00 and timer to IDLE while preserving persisted laps', async () => {
     await repository.saveSwimmer(testSwimmer);
     const card = new SwimmerCard({ swimmer: testSwimmer });
     card.render();
@@ -389,9 +389,8 @@ describe('Empirical Verification: Feature 2 — Split "Pause / Lap+Pause" Button
     const persistedBeforeReset = await repository.getLaps(testSwimmer.id);
     assert.strictEqual(persistedBeforeReset.length, 3, 'Repository must hold all 3 laps before reset');
 
-    // 2. Click "Reiniciar" button on the card
-    assert.strictEqual(card._btnResetEl.disabled, false, 'Reset button must be enabled before click');
-    await card._btnResetEl.dispatchEvent({ type: 'click' });
+    // 2. Trigger handleReset() (as invoked by modal/master reset)
+    await card.handleReset();
 
     // 3. Verify card stopwatch display and state reset
     assert.strictEqual(card.timerState.state, TIMER_STATES.IDLE, 'Timer state must be reset to IDLE');
@@ -399,7 +398,6 @@ describe('Empirical Verification: Feature 2 — Split "Pause / Lap+Pause" Button
     assert.strictEqual(card._timeEl.textContent, '00:00.00', 'Stopwatch display must be reset to 00:00.00');
     assert.strictEqual(card._stateLabelEl.textContent, 'LISTO', 'State label must be LISTO');
     assert.strictEqual(card._lapCountEl.textContent, 'V1', 'Lap counter on giant button must be V1');
-    assert.strictEqual(card._btnResetEl.disabled, true, 'Reset button must become disabled after clean reset');
     assert.strictEqual(card._btnStopEl.disabled, true, 'Stop button must become disabled after reset');
     assert.strictEqual(card._lapBtnEl.disabled, true, 'Lap button must be disabled when IDLE');
     assert.ok(card._btnStartEl.innerHTML.includes('Iniciar'), 'Primary button must show Iniciar');
@@ -458,35 +456,31 @@ describe('Empirical Verification: Feature 2 — Split "Pause / Lap+Pause" Button
   // =========================================================================
   // Verification 7: Reset Button Gating across all 4 States
   // =========================================================================
-  test.skip('EMP-F2-07: Reset button enabled/disabled state gating is strictly enforced', async () => {
+  test('EMP-F2-07: Restarting from STOPPED clears active card.laps while preserving repository laps', async () => {
     await repository.saveSwimmer(testSwimmer);
     const card = new SwimmerCard({ swimmer: testSwimmer });
     card.render();
 
-    // 1. Initial IDLE (accumulatedMs = 0, laps = 0) -> DISABLED
-    assert.strictEqual(card._btnResetEl.disabled, true, 'Must be disabled in clean initial IDLE');
-
-    // 2. RUNNING -> ENABLED
     await card.handleStart();
-    assert.strictEqual(card._btnResetEl.disabled, false, 'Must be enabled when RUNNING');
-
-    // 3. PAUSED -> ENABLED
-    await card.handlePause();
-    assert.strictEqual(card._btnResetEl.disabled, false, 'Must be enabled when PAUSED');
-
-    // 4. STOPPED -> ENABLED
+    await new Promise(r => setTimeout(r, 30));
+    await card.handleLap();
     await card.handleStop();
-    assert.strictEqual(card._btnResetEl.disabled, false, 'Must be enabled when STOPPED');
+    assert.strictEqual(card.timerState.state, TIMER_STATES.STOPPED);
+    assert.strictEqual(card.laps.length, 1);
 
-    // 5. Reset back to IDLE -> DISABLED
-    await card.handleReset();
-    assert.strictEqual(card._btnResetEl.disabled, true, 'Must return to disabled after clean reset');
+    // Restart from STOPPED -> active card laps cleared, DB laps preserved
+    await card.handleStart();
+    assert.strictEqual(card.timerState.state, TIMER_STATES.RUNNING);
+    assert.strictEqual(card.laps.length, 0, 'Active card laps must be cleared when starting new set from STOPPED');
+    assert.strictEqual(card._lapCountEl.textContent, 'V1');
+    const persisted = await repository.getLaps(testSwimmer.id);
+    assert.strictEqual(persisted.length, 1, 'Repository laps must remain intact');
   });
 
   // =========================================================================
   // Verification 8: Multi-Swimmer Independence for Lap+Pause and Reset
   // =========================================================================
-  test.skip('EMP-F2-08: Multi-swimmer independence: Lap+Pause and Reset on Swimmer A do not affect Swimmer B', async () => {
+  test('EMP-F2-08: Multi-swimmer independence: Lap+Pause and Reset on Swimmer A do not affect Swimmer B', async () => {
     const swimmerA = { id: 'swim-indep-a', name: 'Swimmer Alpha', lane: 1 };
     const swimmerB = { id: 'swim-indep-b', name: 'Swimmer Beta', lane: 2 };
 
@@ -515,8 +509,8 @@ describe('Empirical Verification: Feature 2 — Split "Pause / Lap+Pause" Button
     assert.strictEqual(cardB.timerState.state, TIMER_STATES.RUNNING);
     assert.strictEqual(cardB.laps.length, 0);
 
-    // Swimmer A taps Reiniciar
-    await cardA._btnResetEl.dispatchEvent({ type: 'click' });
+    // Swimmer A resets
+    await cardA.handleReset();
 
     // Swimmer A is IDLE; Swimmer B is STILL RUNNING undisturbed
     assert.strictEqual(cardA.timerState.state, TIMER_STATES.IDLE);
@@ -604,7 +598,7 @@ describe('Empirical Verification: Feature 2 — Split "Pause / Lap+Pause" Button
   // =========================================================================
   // Verification 11: Reset from RUNNING State
   // =========================================================================
-  test.skip('EMP-F2-11: Resetting while RUNNING cleanly stops ticker, resets to IDLE, and updates UI', async () => {
+  test('EMP-F2-11: Resetting while RUNNING cleanly stops ticker, resets to IDLE, and updates UI', async () => {
     await repository.saveSwimmer(testSwimmer);
     const card = new SwimmerCard({ swimmer: testSwimmer });
     card.render();
@@ -618,7 +612,6 @@ describe('Empirical Verification: Feature 2 — Split "Pause / Lap+Pause" Button
     assert.strictEqual(card.timerState.state, TIMER_STATES.IDLE);
     assert.strictEqual(card._timeEl.textContent, '00:00.00');
     assert.strictEqual(card._stateLabelEl.textContent, 'LISTO');
-    assert.strictEqual(card._btnResetEl.disabled, true);
     assert.strictEqual(card._btnLapPauseEl.style.display, 'none');
     assert.strictEqual(card._splitContainerEl.classList.contains('is-split'), false);
   });

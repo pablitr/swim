@@ -190,14 +190,14 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     baseline100mSeconds: 60.0
   };
 
-  test.skip('TC-SC-201: render() builds card with cached DOM nodes and initial IDLE state', () => {
+  test('TC-SC-201: render() builds card with cached DOM nodes and initial IDLE state (without card reset button)', () => {
     const card = new SwimmerCard({ swimmer });
     const el = card.render();
 
     assert.strictEqual(el.id, `card-${swimmer.id}`);
     assert.strictEqual(el.dataset.swimmerId, swimmer.id);
 
-    // Verify all critical DOM nodes are properly cached
+    // Verify all critical DOM nodes are properly cached and card reset button is omitted
     assert.ok(card._timeEl, 'card._timeEl must be cached');
     assert.ok(card._stateLabelEl, 'card._stateLabelEl must be cached');
     assert.ok(card._recentLapsListEl, 'card._recentLapsListEl must be cached');
@@ -205,7 +205,7 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     assert.ok(card._lapCountEl, 'card._lapCountEl must be cached');
     assert.ok(card._btnStartEl, 'card._btnStartEl must be cached');
     assert.ok(card._btnStopEl, 'card._btnStopEl must be cached');
-    assert.ok(card._btnResetEl, 'card._btnResetEl must be cached');
+    assert.strictEqual(card._btnResetEl, null, 'card._btnResetEl must be null (reset lives in metrics modal)');
 
     // Initial values
     assert.strictEqual(card._timeEl.textContent, '00:00.00');
@@ -215,7 +215,6 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     // Initial button states
     assert.strictEqual(card._lapBtnEl.disabled, true, 'Lap button must be disabled in IDLE');
     assert.strictEqual(card._btnStopEl.disabled, true, 'Stop button must be disabled in IDLE');
-    assert.strictEqual(card._btnResetEl.disabled, true, 'Reset button must be disabled with zero elapsed time');
     assert.strictEqual(card._btnStartEl.disabled, false, 'Start button must be enabled in IDLE');
     assert.ok(card._btnStartEl.innerHTML.includes('Iniciar'), 'Start button must display "Iniciar" in IDLE');
   });
@@ -285,7 +284,7 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     assert.strictEqual(card._lastTimeStr, '00:20.50');
   });
 
-  test.skip('TC-SC-204: State machine updates visual controls (Iniciar, Pausar, Reanudar, Detener, Reiniciar)', () => {
+  test('TC-SC-204: State machine updates visual controls (Iniciar, Pausar, Reanudar, Detener)', () => {
     const card = new SwimmerCard({ swimmer });
     card.render();
 
@@ -297,7 +296,6 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     assert.strictEqual(card._stateLabelEl.textContent, 'EN MARCHA');
     assert.ok(card._btnStartEl.innerHTML.includes('Pausar'), 'Start button must show Pausar when RUNNING');
     assert.strictEqual(card._btnStopEl.disabled, false, 'Stop button must be enabled when RUNNING');
-    assert.strictEqual(card._btnResetEl.disabled, false, 'Reset button must be enabled when RUNNING');
     assert.strictEqual(card._lapBtnEl.disabled, false, 'Lap button must be enabled when RUNNING');
 
     // 2. PAUSED state
@@ -307,7 +305,6 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     assert.strictEqual(card._stateLabelEl.textContent, 'PAUSADO');
     assert.ok(card._btnStartEl.innerHTML.includes('Reanudar'), 'Start button must show Reanudar when PAUSED');
     assert.strictEqual(card._btnStopEl.disabled, false, 'Stop button must be enabled when PAUSED');
-    assert.strictEqual(card._btnResetEl.disabled, false, 'Reset button must be enabled when PAUSED');
     assert.strictEqual(card._lapBtnEl.disabled, true, 'Lap button must be disabled when PAUSED');
 
     // 3. STOPPED state
@@ -317,7 +314,6 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     assert.strictEqual(card._stateLabelEl.textContent, 'DETENIDO');
     assert.ok(card._btnStartEl.innerHTML.includes('Iniciar'), 'Start button must show Iniciar when STOPPED');
     assert.strictEqual(card._btnStopEl.disabled, true, 'Stop button must be disabled when STOPPED');
-    assert.strictEqual(card._btnResetEl.disabled, false, 'Reset button must remain enabled when STOPPED with elapsed time');
     assert.strictEqual(card._lapBtnEl.disabled, true, 'Lap button must be disabled when STOPPED');
   });
 

@@ -254,8 +254,8 @@ export class SwimmerCard {
         }
 
         metricsModal.open(this.swimmer, allLaps, {
-          onReset: () => this.handleReset({ clearHistorical: false }),
-          canReset: () => this.timerState.state !== TIMER_STATES.IDLE || this.laps.length > 0,
+          onReset: (opts = {}) => this.handleReset({ clearHistorical: Boolean(opts.clearHistorical) }),
+          canReset: () => this.timerState.state !== TIMER_STATES.IDLE || this.laps.length > 0 || allLaps.length > 0,
           onDelete: this.callbacks.onDelete,
           onEdit: (updatedSwimmer) => {
             this.swimmer = { ...this.swimmer, ...updatedSwimmer };
@@ -288,7 +288,10 @@ export class SwimmerCard {
       await this.callbacks.onGroupStart(this.groupId, this.swimmer.id);
       return;
     }
-    
+    if (this.timerState.state === TIMER_STATES.IDLE || this.timerState.state === TIMER_STATES.STOPPED) {
+      this.laps = [];
+    }
+
     this.timerState = await timerEngine.start(this.swimmer.id);
 
     ticker.subscribe(`swimmer-${this.swimmer.id}`, this.updateTimeDisplay);

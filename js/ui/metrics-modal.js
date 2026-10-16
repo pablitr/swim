@@ -305,7 +305,7 @@ class MetricsModal {
         if (!confirmed || typeof this.callbacks.onReset !== 'function') return;
 
         try {
-          const updatedLaps = await this.callbacks.onReset();
+          const updatedLaps = await this.callbacks.onReset({ clearHistorical: true });
           this.laps = Array.isArray(updatedLaps) ? updatedLaps : [];
           this._renderBody(this.swimmer, this.laps);
         } catch (err) {
