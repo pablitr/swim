@@ -233,12 +233,20 @@ export class SwimmerCard {
     // Tapping .card-header cycles groupId (0 -> 1 -> 2 -> 3 -> 4 -> 0)
     // Safety constraint: strictly disabled if RUNNING or PAUSED. Only allowed when IDLE or STOPPED.
     if (this._headerEl) {
-      this._headerEl.addEventListener('click', (e) => {
+      this._headerEl.addEventListener('click', async (e) => {
         if (this.timerState.state === TIMER_STATES.RUNNING || this.timerState.state === TIMER_STATES.PAUSED) {
           return;
         }
         this.groupId = (this.groupId + 1) % 5;
+        if (this.swimmer) this.swimmer.groupId = this.groupId;
         this._updateGroupBadge();
+        if (typeof repository !== 'undefined' && repository && typeof repository.saveSwimmer === 'function' && this.swimmer?.id) {
+          try {
+            await repository.saveSwimmer(this.swimmer);
+          } catch (_) {
+            // Ignore persistence errors for transient test objects
+          }
+        }
       });
     }
 

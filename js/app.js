@@ -626,6 +626,12 @@ class AppCoordinator {
    */
   async handleSaveSwimmer(swimmerData) {
     const isNew = !swimmerData.id;
+    if (!isNew) {
+      const existing = await repository.getSwimmer(swimmerData.id);
+      if (existing) {
+        swimmerData = { ...existing, ...swimmerData };
+      }
+    }
     await repository.saveSwimmer(swimmerData);
 
     if (isNew) {

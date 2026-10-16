@@ -34,12 +34,12 @@
 ## Task 2: Persist Heat Group (`groupId`) & Preserve Swimmer Fields on Edit
 **Description:** Persist `swimmer.groupId` via `repository.saveSwimmer(this.swimmer)` when cycling heat groups on `.card-header`, and merge existing swimmer properties in `AppCoordinator.handleSaveSwimmer()` so editing a profile never wipes `groupId`.
 **Acceptance criteria:**
-- [ ] Cycling `.card-header` updates `swimmer.groupId` and calls `repository.saveSwimmer(this.swimmer)`.
-- [ ] `handleSaveSwimmer()` merges `swimmerData` with `await repository.getSwimmer(swimmerData.id)` before saving.
+- [x] Cycling `.card-header` updates `swimmer.groupId` and calls `repository.saveSwimmer(this.swimmer)`.
+- [x] `handleSaveSwimmer()` merges `swimmerData` with `await repository.getSwimmer(swimmerData.id)` before saving.
 **Verification:**
-- [ ] Tests pass: `node --test tests/unit/swimmer_card.test.js tests/unit/feature1_multigroup.test.js`
-- [ ] Build succeeds: `npm test`
-- [ ] Manual check: Assign G1 to a swimmer, edit their baseline time, reload page, and confirm G1 badge persists.
+- [x] Tests pass: `node --test tests/unit/swimmer_card.test.js tests/unit/feature1_multigroup.test.js`
+- [x] Build succeeds: `npm test`
+- [x] Manual check: Assign G1 to a swimmer, edit their baseline time, reload page, and confirm G1 badge persists.
 **Dependencies:** Task 1
 **Files likely touched:**
 - `js/ui/swimmer-card.js`
