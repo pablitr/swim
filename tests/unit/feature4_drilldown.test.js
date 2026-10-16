@@ -284,7 +284,7 @@ describe('Feature 4: Global Stats Drill-Down & Historical Traceability Suite', (
     assert.ok(contentEl.innerHTML.includes('Resumen por Nadador'), 'Summary table restored after clicking back');
   });
 
-  test('TC-DD-403: Month and Year volume accumulators calculate laps and meters (laps * 50m) accurately', async () => {
+  test('TC-DD-403: Month and Year lap accumulators calculate monthly and yearly lap counts accurately', async () => {
     const now = new Date();
     const curYear = now.getFullYear();
     const curMonth = now.getMonth();
@@ -324,14 +324,12 @@ describe('Feature 4: Global Stats Drill-Down & Historical Traceability Suite', (
 
     const contentEl = domElements.get('global-stats-content');
 
-    // Month accumulator: exactly 3 laps = 150m
+    // Month accumulator: exactly 3 laps
     assert.ok(contentEl.innerHTML.includes('<div class="metric-value">3</div>'), 'Must show 3 laps this month');
-    assert.ok(contentEl.innerHTML.includes('150 m'), 'Must show 150 m this month');
 
-    // Year accumulator: if curMonth > 0, 3 + 2 = 5 laps (250m). If curMonth === 0, exactly 3 laps (150m)
+    // Year accumulator: if curMonth > 0, 3 + 2 = 5 laps. If curMonth === 0, 3 laps
     const expectedYearLaps = curMonth > 0 ? 5 : 3;
-    const expectedYearMeters = expectedYearLaps * 50;
-    assert.ok(contentEl.innerHTML.includes(`${expectedYearMeters} m`), `Must show ${expectedYearMeters} m this year`);
+    assert.ok(contentEl.innerHTML.includes(`<div class="metric-value">${expectedYearLaps}</div>`), `Must show ${expectedYearLaps} laps this year`);
   });
 
   test('TC-DD-404: Session partitioning clusters laps across resets into distinct sessions and renders stacked boxplots', async () => {
@@ -378,7 +376,7 @@ describe('Feature 4: Global Stats Drill-Down & Historical Traceability Suite', (
 
     const contentEl = domElements.get('global-stats-content');
     assert.ok(contentEl.innerHTML.includes('Sin sesiones de entrenamiento registradas aún para este nadador.'));
-    assert.ok(contentEl.innerHTML.includes('0 m'));
+    assert.ok(contentEl.innerHTML.includes('<div class="metric-value">0</div>'));
     assert.ok(contentEl.innerHTML.includes('← Volver a Estadísticas Globales'));
   });
 

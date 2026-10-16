@@ -436,9 +436,6 @@ class AppCoordinator {
       return !isNaN(d.getTime()) && d.getFullYear() === curYear;
     });
 
-    const monthVolMeters = monthLaps.length * 50;
-    const yearVolMeters = yearLaps.length * 50;
-
     // Partition laps into training sessions
     const sessions = partitionLapsIntoSessions(allLaps);
     const recentSessions = sessions.slice(-20).reverse();
@@ -542,16 +539,8 @@ class AppCoordinator {
           <div class="metric-value">${monthLaps.length}</div>
         </div>
         <div class="metric-box">
-          <div class="metric-label">Volumen Este Mes</div>
-          <div class="metric-value">${monthVolMeters.toLocaleString('es-ES')} m</div>
-        </div>
-        <div class="metric-box">
           <div class="metric-label">Pases Este Año</div>
           <div class="metric-value">${yearLaps.length}</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-label">Volumen Este Año</div>
-          <div class="metric-value">${yearVolMeters.toLocaleString('es-ES')} m</div>
         </div>
       </div>
 

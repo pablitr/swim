@@ -259,15 +259,12 @@ describe('Challenger M2: Empirical Adversarial Challenge Suite', () => {
       assert.ok(contentEl.innerHTML.includes('Sarah Sjöström'));
       assert.ok(contentEl.innerHTML.includes('C5'));
 
-      // Month accumulator: exactly 3 laps = 150m
+      // Month accumulator: exactly 3 laps
       assert.ok(contentEl.innerHTML.includes('<div class="metric-value">3</div>'), 'Must show 3 laps this month');
-      assert.ok(contentEl.innerHTML.includes('150 m'), 'Must show 150 m this month');
 
       // Year accumulator
       const expectedYearLaps = isJan ? 3 : 5;
-      const expectedYearMeters = expectedYearLaps * 50;
       assert.ok(contentEl.innerHTML.includes(`<div class="metric-value">${expectedYearLaps}</div>`), `Must show ${expectedYearLaps} laps this year`);
-      assert.ok(contentEl.innerHTML.includes(`${expectedYearMeters} m`), `Must show ${expectedYearMeters} m this year`);
 
       // Back button click restores table
       const backBtn = contentEl.querySelector('#btn-drilldown-back');

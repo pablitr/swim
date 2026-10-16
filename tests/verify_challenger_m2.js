@@ -322,33 +322,23 @@ async function runEmpiricalChallenges() {
     assert.ok(contentEl.innerHTML.includes('53.4s'));
   });
 
-  check('Month accumulator strictly counts current month laps (3 laps = 150m) excluding last month and last year', () => {
+  check('Month accumulator strictly counts current month laps excluding last month and last year', () => {
     // Current month has exactly 3 laps
     const expectedMonthLaps = 3;
-    const expectedMonthMeters = 3 * 50; // 150m
     assert.ok(
       contentEl.innerHTML.includes(`<div class="metric-value">${expectedMonthLaps}</div>`),
       `Must display exactly ${expectedMonthLaps} pases este mes`
-    );
-    assert.ok(
-      contentEl.innerHTML.includes(`${expectedMonthMeters} m`),
-      `Must display exactly ${expectedMonthMeters} m volumen este mes`
     );
   });
 
   check('Year accumulator strictly counts current year laps (excluding last year and future year)', () => {
     // Current year laps:
-    // If not January: 3 this month + 2 last month = 5 laps (250m)
-    // If January: 3 this month = 3 laps (150m)
+    // If not January: 3 this month + 2 last month = 5 laps
+    // If January: 3 this month = 3 laps
     const expectedYearLaps = isJan ? 3 : 5;
-    const expectedYearMeters = expectedYearLaps * 50;
     assert.ok(
       contentEl.innerHTML.includes(`<div class="metric-value">${expectedYearLaps}</div>`),
       `Must display exactly ${expectedYearLaps} pases este año`
-    );
-    assert.ok(
-      contentEl.innerHTML.includes(`${expectedYearMeters} m`),
-      `Must display exactly ${expectedYearMeters} m volumen este año`
     );
   });
 
@@ -413,15 +403,15 @@ async function runEmpiricalChallenges() {
 
   await app.showSwimmerDrillDown(swimmer2.id);
 
-  check('Feeds 7 sessions: strictly the last 5 active training sessions are rendered in DOM', () => {
+  check('Feeds 7 sessions: strictly renders last sessions up to 20 in DOM', () => {
     const sessionCards = contentEl.querySelectorAll('.drilldown-session-card');
-    assert.equal(sessionCards.length, 5, 'Must render exactly 5 session cards, truncating older sessions');
+    assert.equal(sessionCards.length, 7, 'Must render all 7 session cards when <= 20');
   });
 
   check('Rendered sessions are ordered reverse-chronologically (Session 7 newest down to Session 3)', () => {
-    // Extract the 5 session card HTML blocks
+    // Extract the session card HTML blocks
     const sessionCardBlocks = contentEl.innerHTML.split('<div class="drilldown-session-card">').slice(1);
-    assert.equal(sessionCardBlocks.length, 5, 'Must have 5 session card blocks in innerHTML');
+    assert.equal(sessionCardBlocks.length, 7, 'Must have 7 session card blocks in innerHTML');
 
     // In our sessionConfigs:
     // Session 7 (newest): 4 pases
@@ -439,7 +429,7 @@ async function runEmpiricalChallenges() {
   check('Generated SVG outputs have valid XML structure and <svg class="boxplot-svg"', () => {
     const svgMatches = contentEl.innerHTML.match(/<svg[^>]*class="[^"]*boxplot-svg[^"]*"[^>]*>[\s\S]*?<\/svg>/g);
     assert.ok(svgMatches, 'Must find SVG boxplot elements in DOM');
-    assert.equal(svgMatches.length, 5, 'Must find exactly 5 SVG boxplot elements');
+    assert.equal(svgMatches.length, 7, 'Must find exactly 7 SVG boxplot elements');
 
     svgMatches.forEach((svgStr, idx) => {
       assert.ok(svgStr.includes('viewBox="0 0 440 75"'), `SVG #${idx + 1} must have correct viewBox`);

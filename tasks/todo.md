@@ -77,13 +77,13 @@
 ## Task 4: Remove Distance / Volume Measure from Drill-Down View & Tests
 **Description:** Remove `monthVolMeters` and `yearVolMeters` ("Volumen Este Mes" / "Volumen Este Año") from `showSwimmerDrillDown()` in `js/app.js`, keeping only lap counts (`Pases Este Mes`, `Pases Este Año`), and update the corresponding assertions in `tests/unit/feature4_drilldown.test.js`, `tests/unit/challenger_m2_empirical.test.js`, and `tests/verify_challenger_m2.js`.
 **Acceptance criteria:**
-- [ ] `showSwimmerDrillDown()` no longer calculates `* 50` meters or renders `Volumen Este Mes` / `Volumen Este Año`.
-- [ ] `Pases Este Mes` and `Pases Este Año` remain displayed in `.stats-summary-grid`.
-- [ ] All drill-down and empirical tests pass.
+- [x] `showSwimmerDrillDown()` no longer calculates `* 50` meters or renders `Volumen Este Mes` / `Volumen Este Año`.
+- [x] `Pases Este Mes` and `Pases Este Año` remain displayed in `.stats-summary-grid`.
+- [x] All drill-down and empirical tests pass.
 **Verification:**
-- [ ] Tests pass: `node --test tests/unit/feature4_drilldown.test.js tests/unit/challenger_m2_empirical.test.js`
-- [ ] Build succeeds: `npm test && npm run verify`
-- [ ] Manual check: Open Estadísticas Globales -> click a swimmer -> verify only `Pases Este Mes` and `Pases Este Año` appear under Acumulados de Rendimiento.
+- [x] Tests pass: `node --test tests/unit/feature4_drilldown.test.js tests/unit/challenger_m2_empirical.test.js`
+- [x] Build succeeds: `npm test && npm run verify`
+- [x] Manual check: Open Estadísticas Globales -> click a swimmer -> verify only `Pases Este Mes` and `Pases Este Año` appear under Acumulados de Rendimiento.
 **Dependencies:** Task 3
 **Files likely touched:**
 - `js/app.js`
@@ -95,6 +95,6 @@
 ---
 
 ## Checkpoint: Complete
-- [ ] All acceptance criteria met
-- [ ] Full test and verification suite green (`npm test && npm run verify`)
-- [ ] Ready for review
+- [x] All acceptance criteria met
+- [x] Full test and verification suite green (`npm test && npm run verify`)
+- [x] Ready for review
