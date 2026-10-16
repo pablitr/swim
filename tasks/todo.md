@@ -51,13 +51,13 @@
 ## Task 3: Active-Run Reload Hydration & DB-Backed CSV Export
 **Description:** Update `loadSwimmers()` in `js/app.js` so `IDLE` swimmers mount with `laps: []`, active swimmers hydrate only laps from `timerState.startTime` onward, `groupId` restores from `swimmer.groupId`, and `exportCsv()` queries `repository.getLaps(swimmer.id)`.
 **Acceptance criteria:**
-- [ ] Reloading when a swimmer is `IDLE` mounts `SwimmerCard` with `laps: []`.
-- [ ] Reloading when a swimmer is mid-run hydrates only laps with `timestamp >= timerState.startTime`.
-- [ ] `exportCsv()` exports all persisted laps from `repository.getLaps(swimmer.id)` even after a stopwatch reset.
+- [x] Reloading when a swimmer is `IDLE` mounts `SwimmerCard` with `laps: []`.
+- [x] Reloading when a swimmer is mid-run hydrates only laps with `timestamp >= timerState.startTime`.
+- [x] `exportCsv()` exports all persisted laps from `repository.getLaps(swimmer.id)` even after a stopwatch reset.
 **Verification:**
-- [ ] Tests pass: `npm test`
-- [ ] Build succeeds: `npm run verify`
-- [ ] Manual check: Record laps, reset stopwatch from modal, reload page, click Export CSV, and verify recorded laps appear in the CSV file.
+- [x] Tests pass: `npm test`
+- [x] Build succeeds: `npm run verify`
+- [x] Manual check: Record laps, reset stopwatch from modal, reload page, click Export CSV, and verify recorded laps appear in the CSV file.
 **Dependencies:** Task 2
 **Files likely touched:**
 - `js/app.js`
@@ -66,9 +66,9 @@
 ---
 
 ## Checkpoint: After Tasks 2-3 (Core Persistence)
-- [ ] All tests pass (`npm test && npm run verify`)
-- [ ] Group persistence and CSV export verified end-to-end
-- [ ] Review with human before proceeding to Phase 3
+- [x] All tests pass (`npm test && npm run verify`)
+- [x] Group persistence and CSV export verified end-to-end
+- [x] Review with human before proceeding to Phase 3
 
 ---
 

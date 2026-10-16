@@ -159,9 +159,16 @@ class AppCoordinator {
         lastLapCumulativeMs: 0
       };
 
-      const laps = await repository.getLaps(swimmer.id);
+      const allLaps = await repository.getLaps(swimmer.id);
+      const activeLapCount = Math.max(0, (Number(timerState.currentLapIndex) || 1) - 1);
+      let laps = [];
+      if (timerState.state !== TIMER_STATES.IDLE && activeLapCount > 0) {
+        laps = timerState.startTime
+          ? allLaps.filter(l => (Number(l.timestamp) || 0) >= timerState.startTime)
+          : allLaps.slice(-activeLapCount);
+      }
       const existingCard = this.cards.get(swimmer.id);
-      const groupId = existingCard ? existingCard.groupId : 0;
+      const groupId = existingCard ? existingCard.groupId : (Number(swimmer.groupId) || 0);
 
       const card = new SwimmerCard({
         swimmer,
@@ -293,7 +300,7 @@ class AppCoordinator {
   }
 
   /** Download swimmer profiles, current timer state, and recorded laps as a CSV file. */
-  exportCsv() {
+  async exportCsv() {
     const rows = [[
       'ID Nadador', 'Nadador', 'Carril', 'Base 100 m (s)', 'Estado',
       'Tiempo actual', 'Tiempo actual (ms)', 'Pase', 'Parcial (ms)',
@@ -314,12 +321,17 @@ class AppCoordinator {
         Math.round(elapsedMs)
       ];
 
-      if (card.laps.length === 0) {
+      const persistedLaps = (repository && typeof repository.getLaps === 'function')
+        ? await repository.getLaps(swimmer.id)
+        : [];
+      const exportLaps = persistedLaps.length >= card.laps.length ? persistedLaps : card.laps;
+
+      if (exportLaps.length === 0) {
         rows.push([...profileAndTimer, '', '', '', '']);
         continue;
       }
 
-      for (const lap of card.laps) {
+      for (const lap of exportLaps) {
         const timestamp = lap.timestamp ? new Date(lap.timestamp).toISOString() : '';
         rows.push([
           ...profileAndTimer,
