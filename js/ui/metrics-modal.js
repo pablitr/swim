@@ -1,7 +1,8 @@
 import { formatTime } from '../timing/timer-engine.js';
 import { computeSustainablePace } from '../analytics/pace-calculator.js';
 import { calculateTrainingZones } from '../analytics/zones.js';
-import { renderBoxplot } from './boxplot-svg.js';
+import { renderBoxplot, renderBoxplotSVG } from './boxplot-svg.js';
+import { splitCurrentAndHistoricalSessions } from '../analytics/session-partitioner.js';
 import { repository } from '../storage/repository.js';
 import { modalManager } from './modal.js';
 
@@ -13,10 +14,12 @@ class MetricsModal {
     this.bodyEl = null;
     this.closeBtn = null;
     this.editBtn = null;
+    this.resetBtn = null;
     this.swimmer = null;
     this.laps = [];
     this.callbacks = {};
     this._editBound = false;
+    this._resetBound = false;
     this._bound_close = this._close.bind(this);
     this._bound_overlayClick = this._overlayClick.bind(this);
     this._bound_keyDown = this._keyDown.bind(this);
@@ -61,8 +64,13 @@ class MetricsModal {
         if (!confirmed || typeof this.callbacks.onReset !== 'function') return;
 
         try {
-          const updatedLaps = await this.callbacks.onReset();
-          this.laps = Array.isArray(updatedLaps) ? updatedLaps : [];
+          await this.callbacks.onReset({ clearHistorical: false });
+          if (this.swimmer && this.swimmer.id && repository && typeof repository.getLaps === 'function') {
+            const persisted = await repository.getLaps(this.swimmer.id);
+            if (persisted && persisted.length > 0) {
+              this.laps = persisted;
+            }
+          }
           this._renderBody(this.swimmer, this.laps);
         } catch (err) {
           console.error('[MetricsModal] No se pudo reiniciar:', err);
@@ -114,7 +122,8 @@ class MetricsModal {
       try {
         const state = await repository.getTimerState(this.swimmer.id);
         if (state) {
-          const lastLap = this.laps.length > 0 ? this.laps[this.laps.length - 1] : null;
+          const updatedCurrent = splitCurrentAndHistoricalSessions(this.laps).currentSession;
+          const lastLap = updatedCurrent.length > 0 ? updatedCurrent[updatedCurrent.length - 1] : null;
           state.lastLapCumulativeMs = lastLap ? lastLap.cumulativeDurationMs : 0;
           await repository.saveTimerState(state);
         }
@@ -197,14 +206,16 @@ class MetricsModal {
       zonesHTML = `<div style="color:var(--text-muted);font-size:12px;">Sin tiempo base de 100m configurado.</div>`;
     }
 
+    const { currentSession, previousSessions } = splitCurrentAndHistoricalSessions(laps);
+
     // --- Métricas rápidas ---
     let metricsHTML = '';
     let paceData = null;
-    if (laps.length > 0) {
-      const splits = laps.map(l => l.splitDurationMs / 1000);
+    if (currentSession.length > 0) {
+      const splits = currentSession.map(l => l.splitDurationMs / 1000);
       paceData = computeSustainablePace(splits);
-      const lastLap = laps[laps.length - 1];
-      const minSplit = Math.min(...laps.map(l => l.splitDurationMs));
+      const lastLap = currentSession[currentSession.length - 1];
+      const minSplit = Math.min(...currentSession.map(l => l.splitDurationMs));
       const paceStr = (paceData.sustainablePace != null)
         ? `${paceData.sustainablePace.toFixed(2)}s`
         : '--';
@@ -213,7 +224,7 @@ class MetricsModal {
         <div class="quick-metrics">
           <div class="metric-box">
             <div class="metric-label">Pases</div>
-            <div class="metric-value">${laps.length}</div>
+            <div class="metric-value">${currentSession.length}</div>
           </div>
           <div class="metric-box">
             <div class="metric-label">Último</div>
@@ -232,18 +243,18 @@ class MetricsModal {
 
     // --- Boxplot ---
     const boxplotId = `metrics-boxplot-${swimmer.id}`;
-    const boxplotHTML = laps.length > 0
+    const boxplotHTML = currentSession.length > 0
       ? `<div class="modal-section-title">Distribución de Pases</div>
          <div class="boxplot-wrapper" id="${boxplotId}"></div>`
       : '';
 
-    // --- Historial de vueltas ---
+    // --- Historial de vueltas (Serie Actual) ---
     let lapsHTML = '';
-    if (laps.length > 0) {
+    if (currentSession.length > 0) {
       if (paceData) {
-        laps.forEach((lap, idx) => { lap.isOutlier = paceData.outlierIndices[idx] || false; });
+        currentSession.forEach((lap, idx) => { lap.isOutlier = paceData.outlierIndices[idx] || false; });
       }
-      const rows = [...laps].reverse().map(lap => `
+      const rows = [...currentSession].reverse().map(lap => `
         <tr class="${lap.isOutlier ? 'outlier' : ''}">
           <td><strong>#${lap.lapNumber}</strong>${lap.isOutlier ? ' <span class="outlier-pill">ATÍPICO</span>' : ''}</td>
           <td>${formatTime(lap.splitDurationMs)}</td>
@@ -270,11 +281,80 @@ class MetricsModal {
       lapsHTML = `<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:16px;">Sin pases registrados aún.</div>`;
     }
 
+    // --- Series Anteriores ---
+    let previousSessionsSectionHTML = '';
+    if (previousSessions.length > 0) {
+      let globalMin = Infinity;
+      let globalMax = -Infinity;
+      for (const session of [currentSession, ...previousSessions]) {
+        for (const lap of session) {
+          const sec = lap.splitDurationMs / 1000;
+          if (sec < globalMin) globalMin = sec;
+          if (sec > globalMax) globalMax = sec;
+        }
+      }
+      if (globalMin === Infinity) {
+        globalMin = 0;
+        globalMax = 0;
+      }
+
+      const previousSessionsCardsHTML = previousSessions.map((session, pIdx) => {
+        let dateLabel = `Serie ${previousSessions.length - pIdx}`;
+        if (session[0]?.timestamp) {
+          const d = new Date(session[0].timestamp);
+          if (!isNaN(d.getTime())) {
+            dateLabel = d.toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+          }
+        }
+        const splitsSeconds = session.map(l => l.splitDurationMs / 1000);
+        const bestSplitMs = Math.min(...session.map(l => l.splitDurationMs));
+        const sessionPaceData = computeSustainablePace(splitsSeconds);
+        const sessionPaceStr = (sessionPaceData.sustainablePace != null)
+          ? `${sessionPaceData.sustainablePace.toFixed(2)}s`
+          : '--';
+
+        const baselineVal = swimmer?.baseline100mSeconds ? Number(swimmer.baseline100mSeconds) : undefined;
+        const boxplotMarkup = renderBoxplotSVG(splitsSeconds, {
+          baseline: baselineVal,
+          width: 440,
+          height: 75,
+          globalMin,
+          globalMax
+        });
+
+        return `
+          <div class="drilldown-session-card">
+            <div class="drilldown-session-meta">
+              <strong>${dateLabel}</strong>
+              <span>${session.length} ${session.length === 1 ? 'pase' : 'pases'}</span>
+            </div>
+            <div class="drilldown-session-stats">
+              <span>Mejor: <strong>${formatTime(bestSplitMs)}</strong></span>
+              <span>Ritmo: <strong>${sessionPaceStr}</strong></span>
+            </div>
+            <div class="drilldown-session-chart">
+              ${boxplotMarkup}
+            </div>
+          </div>`;
+      }).join('');
+
+      previousSessionsSectionHTML = `
+        <div class="modal-section-title">Series Anteriores (${previousSessions.length})</div>
+        <div class="drilldown-sessions-stack">
+          ${previousSessionsCardsHTML}
+        </div>`;
+    }
+
     const canReset = typeof this.callbacks.canReset === 'function'
       ? this.callbacks.canReset()
       : laps.length > 0;
 
-    this.bodyEl.innerHTML = zonesHTML + metricsHTML + boxplotHTML + lapsHTML + `
+    this.bodyEl.innerHTML = zonesHTML + metricsHTML + boxplotHTML + lapsHTML + previousSessionsSectionHTML + `
       <div class="modal-actions-bar metrics-actions">
         <button type="button" id="metrics-reset-session" class="btn-secondary btn-danger" ${canReset ? '' : 'disabled'}>
           Borrar sesión
@@ -305,8 +385,8 @@ class MetricsModal {
         if (!confirmed || typeof this.callbacks.onReset !== 'function') return;
 
         try {
-          const updatedLaps = await this.callbacks.onReset({ clearHistorical: true });
-          this.laps = Array.isArray(updatedLaps) ? updatedLaps : [];
+          await this.callbacks.onReset({ clearHistorical: true });
+          this.laps = [];
           this._renderBody(this.swimmer, this.laps);
         } catch (err) {
           console.error('[MetricsModal] No se pudo borrar la sesión:', err);
@@ -335,10 +415,10 @@ class MetricsModal {
     }
 
     // Renderizar boxplot SVG ahora que el DOM existe
-    if (laps.length > 0) {
+    if (currentSession.length > 0) {
       const boxplotEl = document.getElementById(boxplotId);
       if (boxplotEl) {
-        const splits = laps.map(l => l.splitDurationMs / 1000);
+        const splits = currentSession.map(l => l.splitDurationMs / 1000);
         renderBoxplot(boxplotEl, splits, { baseline: swimmer.baseline100mSeconds });
       }
     }

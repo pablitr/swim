@@ -401,4 +401,47 @@ describe('Feature 4: Global Stats Drill-Down & Historical Traceability Suite', (
     assert.ok(css.includes('flex-direction: column;'), '.app-footer must use column layout');
     assert.ok(css.includes('--text-muted'), 'Disclaimer must use high-contrast color token');
   });
+
+  test('TC-DD-407: Global stats hydrates laps from IndexedDB even if card timer was reset to 00:00.00', async () => {
+    const swimmer = { id: 's-reset', name: 'Katie Ledecky', lane: 3, baseline100mSeconds: 58.0 };
+    await repository.saveSwimmer(swimmer);
+
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+    app.cards.set(swimmer.id, card);
+
+    // Start timer and record 3 laps
+    await card.handleStart();
+    await new Promise(r => setTimeout(r, 20));
+    await card.handleLap();
+    await new Promise(r => setTimeout(r, 20));
+    await card.handleLap();
+    await new Promise(r => setTimeout(r, 20));
+    await card.handleLap();
+
+    assert.equal(card.laps.length, 3);
+    const persistedBefore = await repository.getLaps(swimmer.id);
+    assert.equal(persistedBefore.length, 3);
+
+    // Reset card timer (clears card.laps to [], but retains historical laps in repository)
+    await card.handleReset();
+    assert.equal(card.laps.length, 0);
+
+    // Open global stats and await hydration
+    await app.showGlobalStats();
+
+    const contentEl = domElements.get('global-stats-content');
+
+    // Total Vueltas must be 3 (hydrated from IndexedDB, not 0)
+    assert.ok(
+      contentEl.innerHTML.includes('<div class="metric-label">Total Vueltas</div>\n          <div class="metric-value">3</div>'),
+      'Must show Total Vueltas = 3'
+    );
+
+    // Swimmer row must show Katie Ledecky with 3 laps, best split, and sustainable pace
+    assert.ok(contentEl.innerHTML.includes('Katie Ledecky'));
+    assert.ok(contentEl.innerHTML.includes('<td>3</td>'), 'Swimmer row must show 3 laps');
+    assert.ok(!contentEl.innerHTML.includes('<td>0</td>'), 'Swimmer row must not show 0 laps');
+    assert.ok(!contentEl.innerHTML.includes('<td>--</td>\n          <td>--</td>'), 'Best split and pace must be calculated from IndexedDB');
+  });
 });

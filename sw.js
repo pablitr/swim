@@ -1,7 +1,7 @@
 // Service Worker for SwimCoach Tracker PWA
-// Provides offline capability via Cache-First strategy for static assets.
+// Provides offline capability via Network-First strategy with cache fallback.
 
-const CACHE_NAME = 'swimcoach-v6';
+const CACHE_NAME = 'swimcoach-v7';
 
 const PRECACHE_URLS = [
   './',
@@ -17,6 +17,8 @@ const PRECACHE_URLS = [
   './js/analytics/zones.js',
   './js/analytics/stats.js',
   './js/analytics/pace-calculator.js',
+  './js/analytics/session-partitioner.js',
+  './js/telemetry/telemetry.js',
   './js/ui/swimmer-card.js',
   './js/ui/boxplot-svg.js',
   './js/ui/modal.js',
@@ -69,16 +71,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle caching
+  // Handle caching via Network-First strategy with cache fallback
   event.respondWith(
     (async () => {
-      // 1. Try cache
-      const cachedResponse = await caches.match(event.request);
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      // 2. Fetch from network
+      // 1. Try network first
       try {
         const networkResponse = await fetch(event.request);
         if (networkResponse && networkResponse.status === 200) {
@@ -89,6 +85,12 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       } catch (error) {
+        // 2. Fallback to cache when network fails (offline)
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+
         // 3. Fallback for navigation requests when offline
         if (event.request.mode === 'navigate') {
           const fallback = await caches.match('./index.html') || await caches.match('/');

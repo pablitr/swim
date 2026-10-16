@@ -262,7 +262,13 @@ export class SwimmerCard {
         }
 
         metricsModal.open(this.swimmer, allLaps, {
-          onReset: (opts = {}) => this.handleReset({ clearHistorical: Boolean(opts.clearHistorical) }),
+          onReset: async (opts = {}) => {
+            const res = await this.handleReset({ clearHistorical: Boolean(opts.clearHistorical) });
+            if (opts.clearHistorical) {
+              allLaps = [];
+            }
+            return res;
+          },
           canReset: () => this.timerState.state !== TIMER_STATES.IDLE || this.laps.length > 0 || allLaps.length > 0,
           onDelete: this.callbacks.onDelete,
           onEdit: (updatedSwimmer) => {
@@ -274,6 +280,7 @@ export class SwimmerCard {
           },
           onDeleteLap: async (lapId, lapNumber) => {
             this.laps = this.laps.filter(l => (lapId ? l.id !== lapId : String(l.lapNumber) !== String(lapNumber)));
+            allLaps = allLaps.filter(l => (lapId ? l.id !== lapId : String(l.lapNumber) !== String(lapNumber)));
             const lastLap = this.laps.length > 0 ? this.laps[this.laps.length - 1] : null;
             this.timerState.lastLapCumulativeMs = lastLap ? lastLap.cumulativeDurationMs : 0;
             this.updateUI();
@@ -331,6 +338,14 @@ export class SwimmerCard {
   }
 
   async handleStop() {
+    if (this.timerState.state === TIMER_STATES.RUNNING) {
+      const currentElapsedMs = timerEngine.getElapsedMs(this.timerState);
+      const lastLapCumulativeMs = Number(this.timerState.lastLapCumulativeMs) || 0;
+      const pendingSplitMs = currentElapsedMs - lastLapCumulativeMs;
+      if (pendingSplitMs >= 10) {
+        await this.handleLap();
+      }
+    }
     this.timerState = await timerEngine.stop(this.swimmer.id);
     ticker.unsubscribe(`swimmer-${this.swimmer.id}`);
     this.updateUI();

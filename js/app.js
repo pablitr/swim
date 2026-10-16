@@ -8,6 +8,7 @@ import { modalManager } from './ui/modal.js';
 import { computeSustainablePace } from './analytics/pace-calculator.js';
 import { renderBoxplotSVG } from './ui/boxplot-svg.js';
 import { telemetryService } from './telemetry/telemetry.js';
+import { partitionLapsIntoSessions } from './analytics/session-partitioner.js';
 
 const TIMER_STATE_LABELS_ES = {
   [TIMER_STATES.IDLE]: 'Listo',
@@ -15,36 +16,6 @@ const TIMER_STATE_LABELS_ES = {
   [TIMER_STATES.PAUSED]: 'Pausado',
   [TIMER_STATES.STOPPED]: 'Detenido'
 };
-
-/**
- * Partitions chronological laps into training sessions by reset or >20 min time gap
- * @param {Array} allLaps
- * @returns {Array<Array>}
- */
-function partitionLapsIntoSessions(allLaps) {
-  if (!allLaps || allLaps.length === 0) return [];
-  const sorted = [...allLaps].sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
-  const sessions = [];
-  let currentSession = [];
-
-  for (let i = 0; i < sorted.length; i++) {
-    const lap = sorted[i];
-    if (currentSession.length > 0) {
-      const prevLap = currentSession[currentSession.length - 1];
-      const isNewLapNumber = (lap.lapNumber === 1 && prevLap.lapNumber !== 1) || (lap.lapNumber <= prevLap.lapNumber);
-      const isTimeGap = Boolean(lap.timestamp && prevLap.timestamp && (lap.timestamp - prevLap.timestamp > 20 * 60 * 1000));
-      if (isNewLapNumber || isTimeGap) {
-        sessions.push(currentSession);
-        currentSession = [];
-      }
-    }
-    currentSession.push(lap);
-  }
-  if (currentSession.length > 0) {
-    sessions.push(currentSession);
-  }
-  return sessions;
-}
 
 class AppCoordinator {
   constructor() {
@@ -196,14 +167,58 @@ class AppCoordinator {
   /**
    * Shows aggregated global statistics modal
    */
-  showGlobalStats() {
+  async showGlobalStats() {
     if (!this.globalStatsModalEl) return;
+    const contentEl = document.getElementById('global-stats-content');
+    if (!contentEl) return;
+
+    // 1. Synchronous initial render with in-memory card laps
+    const initialLapsMap = new Map();
+    for (const card of this.cards.values()) {
+      initialLapsMap.set(card.swimmer.id, card.laps || []);
+    }
+    this._renderGlobalStatsView(initialLapsMap);
+
+    // 2. Asynchronous hydration from IndexedDB
+    if (repository && typeof repository.getLaps === 'function') {
+      try {
+        const entries = await Promise.all(
+          [...this.cards.values()].map(async (card) => {
+            let dbLaps = [];
+            try {
+              dbLaps = await repository.getLaps(card.swimmer.id);
+            } catch (_) {}
+            const cardLapsLength = card.laps ? card.laps.length : 0;
+            const effectiveLaps = (Array.isArray(dbLaps) && dbLaps.length >= cardLapsLength)
+              ? dbLaps
+              : (card.laps || []);
+            return [card.swimmer.id, effectiveLaps];
+          })
+        );
+
+        // Re-render only if modal is still showing the summary view and DOM is present
+        if (typeof document !== 'undefined' && !contentEl.querySelector('#btn-drilldown-back')) {
+          this._renderGlobalStatsView(new Map(entries));
+        }
+      } catch (err) {
+        console.error('[App] Error hidratando estadísticas globales desde IndexedDB:', err);
+      }
+    }
+  }
+
+  /**
+   * Helper to render the global statistics summary table view
+   * @param {Map<string, Array<Object>>} lapsBySwimmer
+   * @private
+   */
+  _renderGlobalStatsView(lapsBySwimmer) {
+    if (typeof document === 'undefined' || !this.globalStatsModalEl) return;
     const contentEl = document.getElementById('global-stats-content');
     if (!contentEl) return;
 
     const totalSwimmers = this.cards.size;
     const runningSwimmers = [...this.cards.values()].filter(c => c.timerState.state === TIMER_STATES.RUNNING).length;
-    const allLaps = [...this.cards.values()].flatMap(c => c.laps);
+    const allLaps = [...lapsBySwimmer.values()].flat();
     const totalLaps = allLaps.length;
 
     let bestSplitMs = null;
@@ -213,7 +228,7 @@ class AppCoordinator {
 
     const swimmerRows = [...this.cards.values()].map(card => {
       const swimmer = card.swimmer;
-      const laps = card.laps;
+      const laps = lapsBySwimmer.get(swimmer.id) || [];
       const best = laps.length > 0 ? formatTime(Math.min(...laps.map(l => l.splitDurationMs))) : '--';
       let paceStr = '--';
       if (laps.length > 0) {
@@ -544,7 +559,7 @@ class AppCoordinator {
         </div>
       </div>
 
-      <div class="modal-section-title" style="margin-top: var(--space-3);">Últimas Sesiones de Entrenamiento (Hasta 5)</div>
+      <div class="modal-section-title" style="margin-top: var(--space-3);">Historial de Sesiones de Entrenamiento</div>
       <div class="drilldown-sessions-stack">
         ${sessionsHTML}
       </div>

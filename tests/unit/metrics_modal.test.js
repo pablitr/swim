@@ -98,12 +98,14 @@ class MockElement {
     this._listeners[event].push(fn);
   }
 
-  dispatchEvent(event) {
+  async dispatchEvent(event) {
     const eventType = typeof event === 'string' ? event : (event.type || 'click');
     const fns = this._listeners[eventType] || [];
     const eventObj = typeof event === 'string' ? { type: event, target: this, preventDefault() {}, stopPropagation() {} } : event;
     if (!eventObj.target) eventObj.target = this;
-    for (const fn of fns) fn(eventObj);
+    for (const fn of fns) {
+      await fn(eventObj);
+    }
   }
 
   querySelector(sel) {
@@ -206,6 +208,7 @@ describe('MetricsModal UI Component Unit Tests (M2 Editing & Gap Preservation)',
     const metricsBodyEl = register('metrics-modal-body', new MockElement('div'));
     const metricsCloseBtn = register('metrics-modal-close', new MockElement('button'));
     const metricsEditBtn = register('metrics-modal-edit', new MockElement('button'));
+    const metricsResetBtn = register('metrics-modal-reset', new MockElement('button'));
 
     // Register swimmer modal elements for modalManager
     const swimmerModalEl = register('swimmer-modal', new MockElement('div'));
@@ -237,7 +240,9 @@ describe('MetricsModal UI Component Unit Tests (M2 Editing & Gap Preservation)',
     metricsModal.bodyEl = null;
     metricsModal.closeBtn = null;
     metricsModal.editBtn = null;
+    metricsModal.resetBtn = null;
     metricsModal._editBound = false;
+    metricsModal._resetBound = false;
 
     modalManager.modalEl = null;
     modalManager.formEl = null;
@@ -439,5 +444,72 @@ describe('MetricsModal UI Component Unit Tests (M2 Editing & Gap Preservation)',
 
     assert.equal(metricsModal.laps.length, 0);
     assert.ok(metricsModal.bodyEl.innerHTML.includes('Sin pases registrados aún.'));
+  });
+
+  test('TC-MM-308: Pulsing #metrics-modal-reset invokes onReset({ clearHistorical: false }) and preserves modal laps, while #metrics-reset-session invokes onReset({ clearHistorical: true }), clears repository and shows empty state', async () => {
+    const swimmer = { id: 's-308', name: 'Katie Ledecky', lane: 4 };
+    await repository.saveSwimmer(swimmer);
+    const lap1 = { id: 'lap-308-1', swimmerId: 's-308', lapNumber: 1, splitDurationMs: 29000, cumulativeDurationMs: 29000 };
+    await repository.saveLap(lap1);
+
+    const resetCalls = [];
+    metricsModal.open(swimmer, [lap1], {
+      onReset: async (opts) => {
+        resetCalls.push(opts);
+        if (opts?.clearHistorical) {
+          await repository.clearLaps(swimmer.id);
+        }
+      }
+    });
+
+    // 1. Click #metrics-modal-reset
+    const modalResetBtn = domElements.get('metrics-modal-reset');
+    assert.ok(modalResetBtn, '#metrics-modal-reset must exist');
+    await modalResetBtn.dispatchEvent({ type: 'click' });
+
+    assert.equal(resetCalls.length, 1);
+    assert.deepEqual(resetCalls[0], { clearHistorical: false });
+    assert.equal(metricsModal.laps.length, 1, 'Modal laps must be preserved');
+    assert.ok(!metricsModal.bodyEl.innerHTML.includes('Sin pases registrados aún.'), 'Should NOT show empty state');
+    assert.ok(metricsModal.bodyEl.innerHTML.includes('#1'), 'Should still show lap #1');
+    const storedLapsAfterReset = await repository.getLaps(swimmer.id);
+    assert.equal(storedLapsAfterReset.length, 1, 'Repository laps must be preserved');
+
+    // 2. Click #metrics-reset-session
+    const resetSessionBtn = metricsModal.bodyEl.querySelector('#metrics-reset-session');
+    assert.ok(resetSessionBtn, '#metrics-reset-session must exist in modal body');
+    await resetSessionBtn.dispatchEvent({ type: 'click' });
+
+    assert.equal(resetCalls.length, 2);
+    assert.deepEqual(resetCalls[1], { clearHistorical: true });
+    assert.equal(metricsModal.laps.length, 0, 'Modal laps must be emptied');
+    assert.ok(metricsModal.bodyEl.innerHTML.includes('Sin pases registrados aún.'), 'Should show empty state');
+    const storedLapsAfterClear = await repository.getLaps(swimmer.id);
+    assert.equal(storedLapsAfterClear.length, 0, 'Repository laps must be cleared');
+  });
+
+  test('TC-MM-309: Multi-session laps: .laps-table shows 3 laps of Serie 2 and Series Anteriores renders .drilldown-session-card for Serie 1', () => {
+    const swimmer = { id: 's-309', name: 'Caeleb Dressel', lane: 2 };
+    const serie1 = [
+      { id: 's1-1', swimmerId: 's-309', lapNumber: 1, splitDurationMs: 25000, cumulativeDurationMs: 25000 },
+      { id: 's1-2', swimmerId: 's-309', lapNumber: 2, splitDurationMs: 26000, cumulativeDurationMs: 51000 }
+    ];
+    const serie2 = [
+      { id: 's2-1', swimmerId: 's-309', lapNumber: 1, splitDurationMs: 24500, cumulativeDurationMs: 24500 },
+      { id: 's2-2', swimmerId: 's-309', lapNumber: 2, splitDurationMs: 24800, cumulativeDurationMs: 49300 },
+      { id: 's2-3', swimmerId: 's-309', lapNumber: 3, splitDurationMs: 25100, cumulativeDurationMs: 74400 }
+    ];
+
+    metricsModal.open(swimmer, [...serie1, ...serie2]);
+
+    // Check .laps-table shows the 3 laps from current session (Serie 2)
+    const deleteButtons = metricsModal.bodyEl.querySelectorAll('.btn-lap-delete');
+    assert.equal(deleteButtons.length, 3, 'Current session table should have exactly 3 delete buttons for Serie 2');
+
+    // Check previous sessions section
+    assert.ok(metricsModal.bodyEl.innerHTML.includes('Series Anteriores (1)'), 'Must include Series Anteriores section title');
+    const sessionCards = metricsModal.bodyEl.querySelectorAll('.drilldown-session-card');
+    assert.equal(sessionCards.length, 1, 'Should render 1 .drilldown-session-card for Serie 1');
+    assert.ok(metricsModal.bodyEl.innerHTML.includes('2 pases'), 'Drilldown card must indicate 2 pases');
   });
 });

@@ -549,4 +549,30 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     // Card 3 (Group 2) remains IDLE
     assert.strictEqual(card3.timerState.state, TIMER_STATES.IDLE);
   });
+
+  test('TC-SC-212: Stopping while RUNNING automatically records final pending lap split and preserves visibility', async () => {
+    await repository.saveSwimmer(swimmer);
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    // 1. Inicia una tarjeta, espera 40ms, y llama a handleStop() sin haber llamado a handleLap()
+    await card.handleStart();
+    await new Promise(r => setTimeout(r, 40));
+    await card.handleStop();
+
+    // 2. Verifica que card.timerState.state === TIMER_STATES.STOPPED
+    assert.strictEqual(card.timerState.state, TIMER_STATES.STOPPED);
+
+    // 3. Verifica que card.laps.length === 1, lapNumber === 1 y repository contiene el pase
+    assert.strictEqual(card.laps.length, 1);
+    assert.strictEqual(card.laps[0].lapNumber, 1);
+    const persistedLaps = await repository.getLaps(swimmer.id);
+    assert.strictEqual(persistedLaps.length, 1);
+    assert.strictEqual(persistedLaps[0].lapNumber, 1);
+    assert.strictEqual(persistedLaps[0].id, card.laps[0].id);
+
+    // 4. Verifica que card._recentLapsListEl.innerHTML incluye 'V1'
+    assert.ok(card._recentLapsListEl.innerHTML.includes('V1'), 'Lap V1 must remain visible in card when STOPPED');
+  });
 });
+

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 let zonesModule = null;
 let paceModule = null;
 let statsModule = null;
+let sessionPartitionerModule = null;
 
 try {
   zonesModule = await import('../../js/analytics/zones.js');
@@ -16,6 +17,10 @@ try {
 
 try {
   statsModule = await import('../../js/analytics/stats.js');
+} catch (e) {}
+
+try {
+  sessionPartitionerModule = await import('../../js/analytics/session-partitioner.js');
 } catch (e) {}
 
 describe('Analytics Engine Unit Tests', () => {
@@ -268,6 +273,113 @@ describe('Analytics Engine Unit Tests', () => {
       const stats = mod.computeBoxplotStats([]);
       assert.strictEqual(stats.count, 0);
       assert.deepStrictEqual(stats.outliers, []);
+    });
+  });
+
+  // ==========================================
+  // Group 4: Session Partitioner Tests
+  // ==========================================
+  describe('Session Partitioner Tests', () => {
+    function getPartitionerHelper(t) {
+      if (!sessionPartitionerModule) {
+        t.skip('Pending session-partitioner.js');
+        return null;
+      }
+      return sessionPartitionerModule;
+    }
+
+    test('TC-SP-01: partitionLapsIntoSessions partitions by lapNumber reset (1, 2, 3 -> 1, 2)', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      const laps = [
+        { id: 'l1', lapNumber: 1, splitDurationMs: 25000, timestamp: 1000 },
+        { id: 'l2', lapNumber: 2, splitDurationMs: 26000, timestamp: 2000 },
+        { id: 'l3', lapNumber: 3, splitDurationMs: 27000, timestamp: 3000 },
+        { id: 'l4', lapNumber: 1, splitDurationMs: 24000, timestamp: 4000 },
+        { id: 'l5', lapNumber: 2, splitDurationMs: 25000, timestamp: 5000 }
+      ];
+
+      const sessions = mod.partitionLapsIntoSessions(laps);
+      assert.strictEqual(sessions.length, 2, 'Should partition into 2 sessions');
+      assert.strictEqual(sessions[0].length, 3, 'First session should have 3 laps');
+      assert.deepStrictEqual(sessions[0].map(l => l.id), ['l1', 'l2', 'l3']);
+      assert.strictEqual(sessions[1].length, 2, 'Second session should have 2 laps');
+      assert.deepStrictEqual(sessions[1].map(l => l.id), ['l4', 'l5']);
+    });
+
+    test('TC-SP-02: partitionLapsIntoSessions partitions by time gap > 20 min even if lapNumber increments', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      const baseTime = 1700000000000;
+      const twentyOneMinutes = 21 * 60 * 1000;
+      const laps = [
+        { id: 'l1', lapNumber: 1, splitDurationMs: 30000, timestamp: baseTime },
+        { id: 'l2', lapNumber: 2, splitDurationMs: 31000, timestamp: baseTime + 30000 },
+        { id: 'l3', lapNumber: 3, splitDurationMs: 32000, timestamp: baseTime + 30000 + twentyOneMinutes },
+        { id: 'l4', lapNumber: 4, splitDurationMs: 33000, timestamp: baseTime + 60000 + twentyOneMinutes }
+      ];
+
+      const sessions = mod.partitionLapsIntoSessions(laps);
+      assert.strictEqual(sessions.length, 2, 'Should partition into 2 sessions due to >20m time gap');
+      assert.deepStrictEqual(sessions[0].map(l => l.id), ['l1', 'l2']);
+      assert.deepStrictEqual(sessions[1].map(l => l.id), ['l3', 'l4']);
+    });
+
+    test('TC-SP-03: splitCurrentAndHistoricalSessions returns currentSession and previousSessions in reverse chronological order', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      const laps = [
+        // Session 1 (oldest)
+        { id: 's1-1', lapNumber: 1, splitDurationMs: 30000, timestamp: 1000 },
+        { id: 's1-2', lapNumber: 2, splitDurationMs: 31000, timestamp: 2000 },
+        // Session 2
+        { id: 's2-1', lapNumber: 1, splitDurationMs: 28000, timestamp: 3000 },
+        { id: 's2-2', lapNumber: 2, splitDurationMs: 29000, timestamp: 4000 },
+        // Session 3 (current / latest)
+        { id: 's3-1', lapNumber: 1, splitDurationMs: 25000, timestamp: 5000 },
+        { id: 's3-2', lapNumber: 2, splitDurationMs: 26000, timestamp: 6000 },
+        { id: 's3-3', lapNumber: 3, splitDurationMs: 27000, timestamp: 7000 }
+      ];
+
+      const result = mod.splitCurrentAndHistoricalSessions(laps);
+      assert.strictEqual(result.sessions.length, 3, 'Total sessions should be 3');
+      assert.deepStrictEqual(result.currentSession.map(l => l.id), ['s3-1', 's3-2', 's3-3'], 'currentSession should be session 3');
+      assert.strictEqual(result.previousSessions.length, 2, 'previousSessions should contain 2 previous sessions');
+      assert.deepStrictEqual(result.previousSessions[0].map(l => l.id), ['s2-1', 's2-2'], 'previousSessions[0] should be most recent past session (session 2)');
+      assert.deepStrictEqual(result.previousSessions[1].map(l => l.id), ['s1-1', 's1-2'], 'previousSessions[1] should be oldest past session (session 1)');
+    });
+
+    test('TC-SP-04: handles empty or invalid inputs gracefully', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      assert.deepStrictEqual(mod.partitionLapsIntoSessions([]), []);
+      assert.deepStrictEqual(mod.partitionLapsIntoSessions(null), []);
+      assert.deepStrictEqual(mod.partitionLapsIntoSessions(undefined), []);
+
+      const emptySplit = mod.splitCurrentAndHistoricalSessions([]);
+      assert.deepStrictEqual(emptySplit, { sessions: [], currentSession: [], previousSessions: [] });
+
+      const nullSplit = mod.splitCurrentAndHistoricalSessions(null);
+      assert.deepStrictEqual(nullSplit, { sessions: [], currentSession: [], previousSessions: [] });
+    });
+
+    test('TC-SP-05: sorts chronological timestamps if provided out of order', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      const laps = [
+        { id: 'l2', lapNumber: 2, splitDurationMs: 26000, timestamp: 2000 },
+        { id: 'l1', lapNumber: 1, splitDurationMs: 25000, timestamp: 1000 },
+        { id: 'l3', lapNumber: 3, splitDurationMs: 27000, timestamp: 3000 }
+      ];
+
+      const sessions = mod.partitionLapsIntoSessions(laps);
+      assert.strictEqual(sessions.length, 1);
+      assert.deepStrictEqual(sessions[0].map(l => l.id), ['l1', 'l2', 'l3']);
     });
   });
 });
