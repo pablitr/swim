@@ -381,5 +381,46 @@ describe('Analytics Engine Unit Tests', () => {
       assert.strictEqual(sessions.length, 1);
       assert.deepStrictEqual(sessions[0].map(l => l.id), ['l1', 'l2', 'l3']);
     });
+
+    test('TC-SP-06: normalizeSessionTag trims, collapses whitespace, caps at 60 chars, handles null/undefined', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      assert.strictEqual(mod.SESSION_TAG_MAX_LENGTH, 60);
+      assert.strictEqual(mod.normalizeSessionTag('   4x100   libre  '), '4x100 libre');
+      assert.strictEqual(mod.normalizeSessionTag('foo\t\n  bar'), 'foo bar');
+      assert.strictEqual(mod.normalizeSessionTag('a'.repeat(75)), 'a'.repeat(60));
+      assert.strictEqual(mod.normalizeSessionTag(null), '');
+      assert.strictEqual(mod.normalizeSessionTag(undefined), '');
+      assert.strictEqual(mod.normalizeSessionTag(''), '');
+    });
+
+    test('TC-SP-07: getSessionTag returns first non-empty tag in session or empty string', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      const sessionWithTags = [
+        { id: 'l1', sessionTag: '' },
+        { id: 'l2', sessionTag: '  4x100 libre  ' },
+        { id: 'l3', sessionTag: 'otra' }
+      ];
+      assert.strictEqual(mod.getSessionTag(sessionWithTags), '4x100 libre');
+
+      const sessionNoTags = [{ id: 'l1' }, { id: 'l2', sessionTag: '   ' }];
+      assert.strictEqual(mod.getSessionTag(sessionNoTags), '');
+      assert.strictEqual(mod.getSessionTag([]), '');
+      assert.strictEqual(mod.getSessionTag(null), '');
+    });
+
+    test('TC-SP-08: getSessionKey returns id of first lap as string or empty string', (t) => {
+      const mod = getPartitionerHelper(t);
+      if (!mod) return;
+
+      assert.strictEqual(mod.getSessionKey([{ id: 'lap-xyz' }, { id: 'lap-abc' }]), 'lap-xyz');
+      assert.strictEqual(mod.getSessionKey([{ id: 456 }]), '456');
+      assert.strictEqual(mod.getSessionKey([]), '');
+      assert.strictEqual(mod.getSessionKey(null), '');
+      assert.strictEqual(mod.getSessionKey([{}]), '');
+    });
   });
 });

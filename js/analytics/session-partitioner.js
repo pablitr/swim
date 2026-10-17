@@ -74,3 +74,22 @@ export function splitCurrentAndHistoricalSessions(allLaps) {
     previousSessions: sessions.slice(0, -1).reverse()
   };
 }
+
+export const SESSION_TAG_MAX_LENGTH = 60;
+
+export function normalizeSessionTag(raw) {
+  return String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, SESSION_TAG_MAX_LENGTH);
+}
+
+export function getSessionTag(session) {
+  if (!Array.isArray(session)) return '';
+  for (const lap of session) {
+    const t = normalizeSessionTag(lap?.sessionTag);
+    if (t) return t;
+  }
+  return '';
+}
+
+export function getSessionKey(session) {
+  return (Array.isArray(session) && session[0]?.id) ? String(session[0].id) : '';
+}

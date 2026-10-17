@@ -30,6 +30,8 @@ class MockElement {
 
   focus() {}
 
+  select() {}
+
   reset() {}
 
   get classList() {
@@ -56,7 +58,8 @@ class MockElement {
 
   set innerHTML(html) {
     this._innerHTML = String(html);
-    this.children = parseHtmlToMockElements(this._innerHTML, this);
+    this.children = [];
+    parseHtmlToMockElements(this._innerHTML, this);
   }
 
   get textContent() {
@@ -109,6 +112,36 @@ class MockElement {
   }
 
   querySelector(sel) {
+    if (sel.includes(' ')) {
+      const parts = sel.split(/\s+/).filter(Boolean);
+      let current = this;
+      for (const part of parts) {
+        if (!current) return null;
+        current = current.querySelector(part);
+      }
+      return current;
+    }
+    const attrMatch = sel.match(/^([^[]*)\[([a-zA-Z0-9_-]+)=["']?([^"'\]]*)["']?\]$/);
+    if (attrMatch) {
+      const baseSel = attrMatch[1];
+      const attrName = attrMatch[2];
+      const attrVal = attrMatch[3];
+      return this._find(el => {
+        let baseOk = true;
+        if (baseSel) {
+          if (baseSel.startsWith('#')) baseOk = el.id === baseSel.slice(1);
+          else if (baseSel.startsWith('.')) baseOk = el.classList.contains(baseSel.slice(1));
+          else baseOk = el.tagName.toLowerCase() === baseSel.toLowerCase();
+        }
+        if (!baseOk) return false;
+        if (attrName.startsWith('data-')) {
+          const rawKey = attrName.slice(5);
+          const camelKey = rawKey.replace(/-([a-z])/g, (_, l) => l.toUpperCase());
+          return el.dataset[camelKey] === attrVal || el.dataset[rawKey] === attrVal;
+        }
+        return el.getAttribute(attrName) === attrVal;
+      });
+    }
     if (sel.startsWith('#')) {
       const id = sel.slice(1);
       return this._find(el => el.id === id);
@@ -148,33 +181,57 @@ class MockElement {
   }
 }
 
+const VOID_TAGS = new Set(['input', 'br', 'hr', 'img', 'meta', 'link']);
+
 function parseHtmlToMockElements(html, parent) {
-  const elements = [];
-  const elRegex = /<([a-zA-Z0-9]+)([^>]*)>/g;
+  const stack = [parent];
+  const tagRegex = /<(\/)?([a-zA-Z0-9]+)([^>]*)>/g;
   let match;
-  while ((match = elRegex.exec(html)) !== null) {
-    const tag = match[1];
-    const attrs = match[2];
-    const el = new MockElement(tag);
-    el.parentNode = parent;
-    const idMatch = attrs.match(/id=["']([^"']+)["']/);
-    if (idMatch) el.id = idMatch[1];
-    const classMatch = attrs.match(/class=["']([^"']+)["']/);
-    if (classMatch) el.className = classMatch[1];
-    if (attrs.includes('disabled')) el.disabled = true;
+  while ((match = tagRegex.exec(html)) !== null) {
+    const isClose = Boolean(match[1]);
+    const tag = match[2];
+    const attrs = match[3] || '';
+    if (isClose) {
+      for (let i = stack.length - 1; i > 0; i--) {
+        if (stack[i].tagName.toLowerCase() === tag.toLowerCase()) {
+          stack.splice(i);
+          break;
+        }
+      }
+    } else {
+      const isSelfClosing = attrs.trim().endsWith('/') || VOID_TAGS.has(tag.toLowerCase());
+      const el = new MockElement(tag);
+      const currParent = stack[stack.length - 1];
+      el.parentNode = currParent;
+      const idMatch = attrs.match(/id=["']([^"']+)["']/);
+      if (idMatch) el.id = idMatch[1];
+      const classMatch = attrs.match(/class=["']([^"']+)["']/);
+      if (classMatch) el.className = classMatch[1];
+      if (attrs.includes('disabled')) el.disabled = true;
 
-    // extract data-* attributes
-    const dataRegex = /data-([a-zA-Z0-9_-]+)=["']([^"']+)["']/g;
-    let dataMatch;
-    while ((dataMatch = dataRegex.exec(attrs)) !== null) {
-      const key = dataMatch[1].replace(/-([a-z])/g, (_, l) => l.toUpperCase());
-      el.dataset[key] = dataMatch[2];
-      el.dataset[dataMatch[1]] = dataMatch[2];
+      const valMatch = attrs.match(/value=["']([^"']*)["']/);
+      if (valMatch) el.value = valMatch[1];
+
+      const textMatch = html.slice(tagRegex.lastIndex).match(/^([^<]+)/);
+      if (textMatch) el.textContent = textMatch[1].trim();
+
+      // extract data-* attributes
+      const dataRegex = /data-([a-zA-Z0-9_-]+)=["']([^"']+)["']/g;
+      let dataMatch;
+      while ((dataMatch = dataRegex.exec(attrs)) !== null) {
+        const rawKey = dataMatch[1];
+        const camelKey = rawKey.replace(/-([a-z])/g, (_, l) => l.toUpperCase());
+        el.dataset[camelKey] = dataMatch[2];
+        el.dataset[rawKey] = dataMatch[2];
+      }
+
+      currParent.children.push(el);
+      if (!isSelfClosing) {
+        stack.push(el);
+      }
     }
-
-    elements.push(el);
   }
-  return elements;
+  return parent.children;
 }
 
 import { metricsModal } from '../../js/ui/metrics-modal.js';
@@ -511,5 +568,114 @@ describe('MetricsModal UI Component Unit Tests (M2 Editing & Gap Preservation)',
     const sessionCards = metricsModal.bodyEl.querySelectorAll('.drilldown-session-card');
     assert.equal(sessionCards.length, 1, 'Should render 1 .drilldown-session-card for Serie 1');
     assert.ok(metricsModal.bodyEl.innerHTML.includes('2 pases'), 'Drilldown card must indicate 2 pases');
+  });
+
+  test('TC-MM-310: con 2 series, etiquetar la serie actual desde .current-session-meta .btn-session-tag -> this.laps y el repo tienen el tag, y el HTML muestra .session-tag', async () => {
+    const swimmer = { id: 's-310', name: 'Florent Manaudou', lane: 3, baseline100mSeconds: 50.0 };
+    await repository.saveSwimmer(swimmer);
+
+    const now = Date.now();
+    // Serie 1 (anterior, pases 1 y 2)
+    const lap1 = { id: 'lap-310-1', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 25000, cumulativeDurationMs: 25000, timestamp: now - 3600000 };
+    const lap2 = { id: 'lap-310-2', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 25500, cumulativeDurationMs: 50500, timestamp: now - 3540000 };
+    // Serie 2 (actual, pases 1 y 2)
+    const lap3 = { id: 'lap-310-3', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 24000, cumulativeDurationMs: 24000, timestamp: now - 60000 };
+    const lap4 = { id: 'lap-310-4', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 24500, cumulativeDurationMs: 48500, timestamp: now };
+
+    await repository.saveLap(lap1);
+    await repository.saveLap(lap2);
+    await repository.saveLap(lap3);
+    await repository.saveLap(lap4);
+
+    metricsModal.open(swimmer, [lap1, lap2, lap3, lap4]);
+
+    // Click en el lápiz de la serie actual
+    const currentTagBtn = metricsModal.bodyEl.querySelector('.current-session-meta .btn-session-tag');
+    assert.ok(currentTagBtn, 'Lápiz de serie actual debe existir en .current-session-meta');
+    await currentTagBtn.dispatchEvent('click');
+
+    // Debe aparecer el input inline
+    const input = metricsModal.bodyEl.querySelector('.session-tag-input');
+    assert.ok(input, 'Input inline debe aparecer tras click en lápiz');
+
+    input.value = '4x50 crol';
+    await input.dispatchEvent({ type: 'keydown', key: 'Enter' });
+
+    // this.laps tiene el tag en los pases de la serie actual y no en los de la anterior
+    assert.equal(metricsModal.laps.find(l => l.id === 'lap-310-3')?.sessionTag, '4x50 crol');
+    assert.equal(metricsModal.laps.find(l => l.id === 'lap-310-4')?.sessionTag, '4x50 crol');
+    assert.equal(metricsModal.laps.find(l => l.id === 'lap-310-1')?.sessionTag, undefined);
+    assert.equal(metricsModal.laps.find(l => l.id === 'lap-310-2')?.sessionTag, undefined);
+
+    // El repo tiene el tag
+    const storedLaps = await repository.getLaps(swimmer.id);
+    const storedLap3 = storedLaps.find(l => l.id === 'lap-310-3');
+    const storedLap4 = storedLaps.find(l => l.id === 'lap-310-4');
+    const storedLap1 = storedLaps.find(l => l.id === 'lap-310-1');
+    assert.equal(storedLap3?.sessionTag, '4x50 crol');
+    assert.equal(storedLap4?.sessionTag, '4x50 crol');
+    assert.equal(storedLap1?.sessionTag, undefined);
+
+    // El HTML muestra .session-tag
+    const tagEl = metricsModal.bodyEl.querySelector('.current-session-meta .session-tag');
+    assert.ok(tagEl, '.session-tag debe existir en el HTML renderizado');
+    assert.ok(metricsModal.bodyEl.innerHTML.includes('4x50 crol'));
+  });
+
+  test('TC-MM-311: borrar una serie anterior con su tacho -> desaparece Series Anteriores y onDeleteSession recibe sus ids', async () => {
+    const swimmer = { id: 's-311', name: 'Adam Peaty', lane: 1, baseline100mSeconds: 58.0 };
+    await repository.saveSwimmer(swimmer);
+
+    const now = Date.now();
+    // Serie 1 (anterior, pases 1 y 2)
+    const lap1 = { id: 'lap-311-1', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 29000, cumulativeDurationMs: 29000, timestamp: now - 3600000 };
+    const lap2 = { id: 'lap-311-2', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 29500, cumulativeDurationMs: 58500, timestamp: now - 3540000 };
+    // Serie 2 (actual, pases 1 y 2)
+    const lap3 = { id: 'lap-311-3', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 28000, cumulativeDurationMs: 28000, timestamp: now - 60000 };
+    const lap4 = { id: 'lap-311-4', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 28500, cumulativeDurationMs: 56500, timestamp: now };
+
+    await repository.saveLap(lap1);
+    await repository.saveLap(lap2);
+    await repository.saveLap(lap3);
+    await repository.saveLap(lap4);
+
+    let receivedDeletedIds = null;
+    metricsModal.open(swimmer, [lap1, lap2, lap3, lap4], {
+      onDeleteSession: async (ids) => {
+        receivedDeletedIds = ids;
+      }
+    });
+
+    // Verificación inicial: debe haber Series Anteriores (1)
+    assert.ok(metricsModal.bodyEl.innerHTML.includes('Series Anteriores (1)'));
+    let sessionCards = metricsModal.bodyEl.querySelectorAll('.drilldown-session-card');
+    assert.equal(sessionCards.length, 1);
+
+    // Click en el tacho de la serie anterior
+    const prevDeleteBtn = metricsModal.bodyEl.querySelector('.drilldown-sessions-stack .btn-session-delete');
+    assert.ok(prevDeleteBtn, 'Tacho de serie anterior debe existir');
+
+    globalThis.window.confirm = () => true;
+    await prevDeleteBtn.dispatchEvent('click');
+
+    // Desaparece Series Anteriores
+    assert.ok(!metricsModal.bodyEl.innerHTML.includes('Series Anteriores'), 'Series Anteriores debe desaparecer al borrar su única serie');
+    sessionCards = metricsModal.bodyEl.querySelectorAll('.drilldown-session-card');
+    assert.equal(sessionCards.length, 0);
+
+    // onDeleteSession recibe sus ids
+    assert.ok(Array.isArray(receivedDeletedIds));
+    assert.deepEqual(receivedDeletedIds.sort(), ['lap-311-1', 'lap-311-2'].sort());
+
+    // this.laps conserva solo los pases de la serie actual
+    assert.equal(metricsModal.laps.length, 2);
+    const lapIds = metricsModal.laps.map(l => l.id).sort();
+    assert.deepEqual(lapIds, ['lap-311-3', 'lap-311-4'].sort());
+
+    // El repo solo tiene los pases restantes
+    const storedLaps = await repository.getLaps(swimmer.id);
+    assert.equal(storedLaps.length, 2);
+    const storedIds = storedLaps.map(l => l.id).sort();
+    assert.deepEqual(storedIds, ['lap-311-3', 'lap-311-4'].sort());
   });
 });

@@ -13,6 +13,7 @@ import {
   count,
   STORES
 } from './db.js';
+import { normalizeSessionTag } from '../analytics/session-partitioner.js';
 
 export class SwimmerRepository {
   constructor() {
@@ -216,6 +217,34 @@ export class SwimmerRepository {
       if (lap.id) {
         await deleteItem(STORES.LAPS, lap.id);
       }
+    }
+  }
+
+  /**
+   * Update or remove session tag across multiple laps
+   * @param {Array<string>} lapIds
+   * @param {string} tag
+   * @returns {Promise<string>}
+   */
+  async updateLapsTag(lapIds, tag) {
+    const clean = normalizeSessionTag(tag);
+    for (const id of (lapIds || [])) {
+      const lap = await get(STORES.LAPS, id);
+      if (!lap) continue;
+      if (clean) lap.sessionTag = clean; else delete lap.sessionTag;
+      await put(STORES.LAPS, lap);
+    }
+    return clean;
+  }
+
+  /**
+   * Delete multiple laps by their IDs
+   * @param {Array<string>} lapIds
+   * @returns {Promise<void>}
+   */
+  async deleteLaps(lapIds) {
+    for (const id of (lapIds || [])) {
+      if (id) await deleteItem(STORES.LAPS, id);
     }
   }
 

@@ -341,6 +341,38 @@ describe('Storage Engine & SwimmerRepository Tests', () => {
       await repo.deleteLap(lapId);
       assert.strictEqual((await repo.getLaps('swim-Z')).length, 0);
     });
+
+    test('TC-LP-01: updateLapsTag updates or removes sessionTag across specified laps', async () => {
+      const swimmerId = 'swim-tag-test';
+      await repo.saveLap({ id: 'lap-1', swimmerId, lapNumber: 1, splitDurationMs: 15000, cumulativeDurationMs: 15000 });
+      await repo.saveLap({ id: 'lap-2', swimmerId, lapNumber: 2, splitDurationMs: 16000, cumulativeDurationMs: 31000 });
+      await repo.saveLap({ id: 'lap-3', swimmerId, lapNumber: 3, splitDurationMs: 17000, cumulativeDurationMs: 48000 });
+
+      const cleanTag = await repo.updateLapsTag(['lap-1', 'lap-2'], '  200 m  espalda ');
+      assert.strictEqual(cleanTag, '200 m espalda');
+
+      let laps = await repo.getLaps(swimmerId);
+      assert.strictEqual(laps[0].sessionTag, '200 m espalda');
+      assert.strictEqual(laps[1].sessionTag, '200 m espalda');
+      assert.strictEqual(laps[2].sessionTag, undefined);
+
+      await repo.updateLapsTag(['lap-1'], '');
+      laps = await repo.getLaps(swimmerId);
+      assert.strictEqual('sessionTag' in laps[0], false);
+      assert.strictEqual(laps[1].sessionTag, '200 m espalda');
+    });
+
+    test('TC-LP-02: deleteLaps removes multiple laps by ID leaving others intact', async () => {
+      const swimmerId = 'swim-del-test';
+      await repo.saveLap({ id: 'lap-a', swimmerId, lapNumber: 1, splitDurationMs: 10000, cumulativeDurationMs: 10000 });
+      await repo.saveLap({ id: 'lap-b', swimmerId, lapNumber: 2, splitDurationMs: 11000, cumulativeDurationMs: 21000 });
+      await repo.saveLap({ id: 'lap-c', swimmerId, lapNumber: 3, splitDurationMs: 12000, cumulativeDurationMs: 33000 });
+
+      await repo.deleteLaps(['lap-a', 'lap-c']);
+      const laps = await repo.getLaps(swimmerId);
+      assert.strictEqual(laps.length, 1);
+      assert.strictEqual(laps[0].id, 'lap-b');
+    });
   });
 
   // ==========================================

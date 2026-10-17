@@ -698,6 +698,10 @@ body {
   overflow-y: auto;
 }
 
+.modal-body > * {
+  flex-shrink: 0;
+}
+
 .modal-section-title {
   font-size: var(--font-xs);
   font-weight: 800;
@@ -791,7 +795,8 @@ body {
 
 /* Laps Feed Table in Modal */
 .laps-table-wrapper {
-  max-height: 180px;
+  max-height: 260px;
+  flex-shrink: 0;
   overflow-y: auto;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -955,6 +960,11 @@ body {
   padding-right: var(--space-1);
 }
 
+#metrics-modal-body .drilldown-sessions-stack {
+  max-height: none;
+  overflow-y: visible;
+}
+
 .drilldown-session-card {
   background-color: var(--bg-surface-elevated);
   border: 1px solid var(--border-default);
@@ -971,6 +981,94 @@ body {
   align-items: center;
   font-size: var(--font-xs);
   color: var(--text-secondary);
+}
+
+.session-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.session-meta-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.session-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background-color: rgba(56, 189, 248, 0.15);
+  color: var(--color-pool-bright);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tag-input {
+  height: 28px;
+  font-size: var(--font-xs);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  padding: 0 var(--space-2);
+  flex: 1;
+  min-width: 120px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast);
+}
+
+.session-tag-input:focus {
+  border-color: var(--border-focus);
+}
+
+.btn-session-tag,
+.btn-session-delete,
+.btn-icon.btn-session-tag,
+.btn-icon.btn-session-delete {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-session-tag:hover,
+.btn-icon.btn-session-tag:hover {
+  color: var(--color-pool-bright);
+  background-color: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.btn-session-delete:hover,
+.btn-icon.btn-session-delete:hover {
+  color: var(--color-stop);
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.current-session-meta {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
 }
 
 .drilldown-session-stats {

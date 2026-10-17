@@ -35,6 +35,7 @@ class MockElement {
   }
 
   focus() {}
+  select() {}
   reset() {}
 
   get classList() {
@@ -103,15 +104,36 @@ class MockElement {
     this._listeners[event].push(fn);
   }
 
-  dispatchEvent(event) {
+  async dispatchEvent(event) {
     const eventType = typeof event === 'string' ? event : (event.type || 'click');
     const fns = this._listeners[eventType] || [];
     const eventObj = typeof event === 'string' ? { type: event, target: this, preventDefault() {}, stopPropagation() {} } : event;
     if (!eventObj.target) eventObj.target = this;
-    for (const fn of fns) fn(eventObj);
+    for (const fn of fns) await fn(eventObj);
   }
 
   querySelector(sel) {
+    const attrMatch = sel.match(/^([^[]*)\[([a-zA-Z0-9_-]+)=["']?([^"'\]]*)["']?\]$/);
+    if (attrMatch) {
+      const baseSel = attrMatch[1];
+      const attrName = attrMatch[2];
+      const attrVal = attrMatch[3];
+      return this._find(el => {
+        let baseOk = true;
+        if (baseSel) {
+          if (baseSel.startsWith('#')) baseOk = el.id === baseSel.slice(1);
+          else if (baseSel.startsWith('.')) baseOk = el.classList.contains(baseSel.slice(1));
+          else baseOk = el.tagName.toLowerCase() === baseSel.toLowerCase();
+        }
+        if (!baseOk) return false;
+        if (attrName.startsWith('data-')) {
+          const rawKey = attrName.slice(5);
+          const camelKey = rawKey.replace(/-([a-z])/g, (_, l) => l.toUpperCase());
+          return el.dataset[camelKey] === attrVal || el.dataset[rawKey] === attrVal;
+        }
+        return el.getAttribute(attrName) === attrVal;
+      });
+    }
     if (sel.startsWith('#')) {
       const id = sel.slice(1);
       return this._find(el => el.id === id);
@@ -166,6 +188,9 @@ function parseHtmlToMockElements(html, parent) {
     if (classMatch) el.className = classMatch[1];
     if (attrs.includes('disabled')) el.disabled = true;
 
+    const valMatch = attrs.match(/value=["']([^"']*)["']/);
+    if (valMatch) el.value = valMatch[1];
+
     const dataRegex = /data-([a-zA-Z0-9_-]+)=["']([^"']+)["']/g;
     let dataMatch;
     while ((dataMatch = dataRegex.exec(attrs)) !== null) {
@@ -214,8 +239,17 @@ describe('Feature 4: Global Stats Drill-Down & Historical Traceability Suite', (
     register('btn-master-reset', new MockElement('button'));
     register('btn-add-swimmer-trigger', new MockElement('button'));
 
+    const body = new MockElement('body');
     globalThis.document = {
-      getElementById: (id) => domElements.get(id) || null,
+      body,
+      getElementById: (id) => {
+        if (domElements.has(id)) return domElements.get(id);
+        for (const root of domElements.values()) {
+          const found = root.querySelector ? root.querySelector(`#${id}`) : null;
+          if (found) return found;
+        }
+        return null;
+      },
       createElement: (tag) => new MockElement(tag),
       addEventListener: () => {},
       removeEventListener: () => {}
@@ -444,4 +478,162 @@ describe('Feature 4: Global Stats Drill-Down & Historical Traceability Suite', (
     assert.ok(!contentEl.innerHTML.includes('<td>0</td>'), 'Swimmer row must not show 0 laps');
     assert.ok(!contentEl.innerHTML.includes('<td>--</td>\n          <td>--</td>'), 'Best split and pace must be calculated from IndexedDB');
   });
+
+  test('TC-DD-408: showSwimmerDrillDown tags all laps in session when editing tag via inline input', async () => {
+    const swimmer = { id: 's-tag-test', name: 'Caeleb Dressel', lane: 4, baseline100mSeconds: 47.5 };
+    await repository.saveSwimmer(swimmer);
+
+    const now = Date.now();
+    // Session 1 (older, 2 laps)
+    const lap1 = { id: 'lap-s1-1', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 24000, cumulativeDurationMs: 24000, timestamp: now - 3600000 };
+    const lap2 = { id: 'lap-s1-2', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 25000, cumulativeDurationMs: 49000, timestamp: now - 3540000 };
+    // Session 2 (newer, 2 laps)
+    const lap3 = { id: 'lap-s2-1', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 23500, cumulativeDurationMs: 23500, timestamp: now - 60000 };
+    const lap4 = { id: 'lap-s2-2', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 24200, cumulativeDurationMs: 47700, timestamp: now };
+
+    await repository.saveLap(lap1);
+    await repository.saveLap(lap2);
+    await repository.saveLap(lap3);
+    await repository.saveLap(lap4);
+
+    await app.showSwimmerDrillDown(swimmer.id);
+
+    const contentEl = domElements.get('global-stats-content');
+    const tagBtns = contentEl.querySelectorAll('.btn-session-tag');
+    assert.equal(tagBtns.length, 2, 'Must render tag buttons for both sessions');
+
+    // Click on pencil of the first card (most recent session: lap3 & lap4)
+    await tagBtns[0].dispatchEvent('click');
+
+    const input = contentEl.querySelector('.session-tag-input');
+    assert.ok(input, 'Must render inline .session-tag-input');
+    input.value = 'Técnica';
+    await input.dispatchEvent({ type: 'keydown', key: 'Enter', preventDefault() {}, stopPropagation() {} });
+
+    // Todos los pases de esa sesión en el repo tienen sessionTag === 'Técnica'
+    const persistedLaps = await repository.getLaps(swimmer.id);
+    const s2Laps = persistedLaps.filter(l => l.id === 'lap-s2-1' || l.id === 'lap-s2-2');
+    const s1Laps = persistedLaps.filter(l => l.id === 'lap-s1-1' || l.id === 'lap-s1-2');
+
+    assert.equal(s2Laps.length, 2);
+    assert.strictEqual(s2Laps[0].sessionTag, 'Técnica');
+    assert.strictEqual(s2Laps[1].sessionTag, 'Técnica');
+    assert.strictEqual(s1Laps[0].sessionTag, undefined);
+    assert.strictEqual(s1Laps[1].sessionTag, undefined);
+
+    // El HTML re-renderizado incluye <span class="session-tag">Técnica</span>
+    assert.ok(
+      contentEl.innerHTML.includes('<span class="session-tag">Técnica</span>'),
+      'Re-rendered HTML must include <span class="session-tag">Técnica</span>'
+    );
+  });
+
+  test('TC-DD-409: showSwimmerDrillDown deletes all laps of session when clicking trash with confirm', async () => {
+    const swimmer = { id: 's-del-test', name: 'Adam Peaty', lane: 2, baseline100mSeconds: 57.0 };
+    await repository.saveSwimmer(swimmer);
+
+    const now = Date.now();
+    // Session 1 (older, 2 laps)
+    const lap1 = { id: 'lap-del-1', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 28000, cumulativeDurationMs: 28000, timestamp: now - 3600000 };
+    const lap2 = { id: 'lap-del-2', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 29000, cumulativeDurationMs: 57000, timestamp: now - 3540000 };
+    // Session 2 (newer, 2 laps)
+    const lap3 = { id: 'lap-del-3', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 27500, cumulativeDurationMs: 27500, timestamp: now - 60000 };
+    const lap4 = { id: 'lap-del-4', swimmerId: swimmer.id, lapNumber: 2, splitDurationMs: 28200, cumulativeDurationMs: 55700, timestamp: now };
+
+    await repository.saveLap(lap1);
+    await repository.saveLap(lap2);
+    await repository.saveLap(lap3);
+    await repository.saveLap(lap4);
+
+    const card = new SwimmerCard({ swimmer, laps: [lap3, lap4] });
+    card.render();
+    app.cards.set(swimmer.id, card);
+
+    globalThis.window.confirm = () => true;
+
+    await app.showSwimmerDrillDown(swimmer.id);
+
+    const contentEl = domElements.get('global-stats-content');
+    let sessionCards = contentEl.querySelectorAll('.drilldown-session-card');
+    assert.equal(sessionCards.length, 2, 'Initial view must render 2 session cards');
+
+    const deleteBtns = contentEl.querySelectorAll('.btn-session-delete');
+    assert.equal(deleteBtns.length, 2, 'Must render delete button on each session card');
+
+    // Click trash on the first card (session 2: lap3 & lap4)
+    await deleteBtns[0].dispatchEvent('click');
+
+    // El repo pierde solo esos pases
+    const remainingLaps = await repository.getLaps(swimmer.id);
+    assert.equal(remainingLaps.length, 2);
+    const remainingIds = remainingLaps.map(l => l.id).sort();
+    assert.deepEqual(remainingIds, ['lap-del-1', 'lap-del-2']);
+
+    // Se renderiza 1 .drilldown-session-card
+    sessionCards = contentEl.querySelectorAll('.drilldown-session-card');
+    assert.equal(sessionCards.length, 1, 'Must render exactly 1 .drilldown-session-card after deletion');
+
+    // Active card was reset because deleted session was active
+    assert.equal(card.laps.length, 0);
+  });
+
+  test('TC-DD-410: showGlobalStats renders without Estado column, uses colspan="5" on empty, and binds both CSV buttons', async () => {
+    // 1. Empty state
+    app.cards.clear();
+    app.showGlobalStats();
+
+    const contentEl = domElements.get('global-stats-content');
+    assert.ok(!contentEl.innerHTML.includes('<th>Estado</th>'), 'Must not contain <th>Estado</th>');
+    assert.ok(!contentEl.innerHTML.includes('status-indicator'), 'Must not contain status indicator');
+    assert.ok(contentEl.innerHTML.includes('colspan="5"'), 'Empty row must use colspan="5"');
+    assert.ok(!contentEl.innerHTML.includes('colspan="6"'), 'Must not use colspan="6"');
+
+    const btnSummary = contentEl.querySelector('#btn-export-csv-summary');
+    const btnDetail = contentEl.querySelector('#btn-export-csv-detail');
+    assert.ok(btnSummary, 'Must contain #btn-export-csv-summary');
+    assert.ok(btnDetail, 'Must contain #btn-export-csv-detail');
+    assert.ok(!contentEl.querySelector('#btn-export-csv'), 'Old #btn-export-csv must not exist');
+
+    // 2. With swimmer
+    const swimmer = { id: 's-csv-test', name: 'Kristóf Milák', lane: 3 };
+    const lap = { id: 'lap-km-1', swimmerId: swimmer.id, lapNumber: 1, splitDurationMs: 25000, cumulativeDurationMs: 25000, timestamp: 1776369720000 };
+    await repository.saveSwimmer(swimmer);
+    await repository.saveLap(lap);
+
+    const card = new SwimmerCard({ swimmer, laps: [lap] });
+    app.cards.set(swimmer.id, card);
+
+    app.showGlobalStats();
+    assert.ok(!contentEl.innerHTML.includes('<th>Estado</th>'), 'Swimmer table must not contain <th>Estado</th>');
+    assert.ok(!contentEl.innerHTML.includes('status-indicator'), 'Swimmer row must not contain status indicator');
+    assert.ok(contentEl.innerHTML.includes('Kristóf Milák'), 'Swimmer row must contain swimmer name');
+
+    // 3. Test exportCsv integration and button dispatch
+    let exportedMode = null;
+    const origExportCsv = app.exportCsv;
+    app.exportCsv = async (mode) => {
+      exportedMode = mode;
+      return origExportCsv.call(app, mode);
+    };
+
+    try {
+      await btnSummary.dispatchEvent('click');
+      assert.strictEqual(exportedMode, 'summary', 'Clicking #btn-export-csv-summary must call exportCsv("summary")');
+
+      await btnDetail.dispatchEvent('click');
+      assert.strictEqual(exportedMode, 'detail', 'Clicking #btn-export-csv-detail must call exportCsv("detail")');
+    } finally {
+      app.exportCsv = origExportCsv;
+    }
+
+    // Direct exportCsv calls return correct CSV formats
+    const summaryCsv = await app.exportCsv('summary');
+    assert.ok(summaryCsv.includes('"Fecha";"Hora inicio";"Carril";"Nadador";"Etiqueta";"Pases";"Total"'));
+    assert.ok(summaryCsv.includes('Kristóf Milák'));
+
+    const detailCsv = await app.exportCsv('detail');
+    assert.ok(detailCsv.includes('"Fecha";"Hora inicio";"Hora pase";"Carril";"Nadador";"Etiqueta";"Pase";"Parcial"'));
+    assert.ok(detailCsv.includes('Kristóf Milák'));
+  });
 });
+

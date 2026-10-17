@@ -574,5 +574,32 @@ describe('SwimmerCard UI Component Unit Tests (M2 High-Contrast & Controls)', ()
     // 4. Verifica que card._recentLapsListEl.innerHTML incluye 'V1'
     assert.ok(card._recentLapsListEl.innerHTML.includes('V1'), 'Lap V1 must remain visible in card when STOPPED');
   });
+
+  test('TC-SC-213: handleSessionDeleted resets card to IDLE and clears laps if lapIds match, or returns false if alien ids', async () => {
+    await repository.saveSwimmer(swimmer);
+    const card = new SwimmerCard({ swimmer });
+    card.render();
+
+    await card.handleStart();
+    await new Promise(r => setTimeout(r, 20));
+    await card.handleLap();
+    await card.handleStop();
+
+    assert.strictEqual(card.laps.length, 1);
+    assert.strictEqual(card.timerState.state, TIMER_STATES.STOPPED);
+    const lapId = card.laps[0].id;
+
+    // Con ids ajenos → devuelve false y no cambia nada
+    const alienResult = await card.handleSessionDeleted(['alien-lap-id']);
+    assert.strictEqual(alienResult, false);
+    assert.strictEqual(card.laps.length, 1);
+    assert.strictEqual(card.timerState.state, TIMER_STATES.STOPPED);
+
+    // Con ids de card.laps → devuelve true, estado IDLE y laps = []
+    const matchResult = await card.handleSessionDeleted([lapId]);
+    assert.strictEqual(matchResult, true);
+    assert.strictEqual(card.laps.length, 0);
+    assert.strictEqual(card.timerState.state, TIMER_STATES.IDLE);
+  });
 });
 

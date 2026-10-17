@@ -67,6 +67,7 @@ export class SwimmerCard {
     this.handleResume = this.handleResume.bind(this);
     this.handleStop = this.handleStop.bind(this);
     this.handleReset = this.handleReset.bind(this);
+    this.handleSessionDeleted = this.handleSessionDeleted.bind(this);
     this.handleLap = this.handleLap.bind(this);
     this._updateRecentLaps = this._updateRecentLaps.bind(this);
     this._updateGroupBadge = this._updateGroupBadge.bind(this);
@@ -287,6 +288,11 @@ export class SwimmerCard {
             if (this.callbacks.onTimerChange) {
               this.callbacks.onTimerChange(this.swimmer.id, this.timerState);
             }
+          },
+          onDeleteSession: async (ids) => {
+            const set = new Set(ids);
+            allLaps = allLaps.filter(l => !set.has(l.id));
+            await this.handleSessionDeleted(ids);
           }
         });
       });
@@ -367,6 +373,13 @@ export class SwimmerCard {
       this.callbacks.onClearLaps(this.swimmer.id);
     }
     return this.laps;
+  }
+
+  async handleSessionDeleted(lapIds) {
+    const ids = new Set(lapIds || []);
+    if (!this.laps.some(l => ids.has(l.id))) return false;
+    await this.handleReset(); // sin clearHistorical: los pases ya fueron borrados
+    return true;
   }
 
   async handleLap() {

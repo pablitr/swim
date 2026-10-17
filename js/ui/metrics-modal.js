@@ -1,10 +1,11 @@
 import { formatTime } from '../timing/timer-engine.js';
 import { computeSustainablePace } from '../analytics/pace-calculator.js';
 import { calculateTrainingZones } from '../analytics/zones.js';
-import { renderBoxplot, renderBoxplotSVG } from './boxplot-svg.js';
+import { renderBoxplot } from './boxplot-svg.js';
 import { splitCurrentAndHistoricalSessions } from '../analytics/session-partitioner.js';
 import { repository } from '../storage/repository.js';
 import { modalManager } from './modal.js';
+import { renderSessionMetaHTML, renderSessionCardHTML, bindSessionCardActions } from './session-card.js';
 
 class MetricsModal {
   constructor() {
@@ -221,6 +222,8 @@ class MetricsModal {
         : '--';
 
       metricsHTML = `
+        <div class="modal-section-title">Serie actual</div>
+        <div class="current-session-meta">${renderSessionMetaHTML(currentSession, { fallbackLabel: 'Serie actual' })}</div>
         <div class="quick-metrics">
           <div class="metric-box">
             <div class="metric-label">Pases</div>
@@ -298,49 +301,14 @@ class MetricsModal {
         globalMax = 0;
       }
 
+      const baselineVal = hasBaseline ? baseline : undefined;
       const previousSessionsCardsHTML = previousSessions.map((session, pIdx) => {
-        let dateLabel = `Serie ${previousSessions.length - pIdx}`;
-        if (session[0]?.timestamp) {
-          const d = new Date(session[0].timestamp);
-          if (!isNaN(d.getTime())) {
-            dateLabel = d.toLocaleDateString('es-ES', {
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-          }
-        }
-        const splitsSeconds = session.map(l => l.splitDurationMs / 1000);
-        const bestSplitMs = Math.min(...session.map(l => l.splitDurationMs));
-        const sessionPaceData = computeSustainablePace(splitsSeconds);
-        const sessionPaceStr = (sessionPaceData.sustainablePace != null)
-          ? `${sessionPaceData.sustainablePace.toFixed(2)}s`
-          : '--';
-
-        const baselineVal = swimmer?.baseline100mSeconds ? Number(swimmer.baseline100mSeconds) : undefined;
-        const boxplotMarkup = renderBoxplotSVG(splitsSeconds, {
+        return renderSessionCardHTML(session, {
+          fallbackLabel: `Serie ${previousSessions.length - pIdx}`,
           baseline: baselineVal,
-          width: 440,
-          height: 75,
           globalMin,
           globalMax
         });
-
-        return `
-          <div class="drilldown-session-card">
-            <div class="drilldown-session-meta">
-              <strong>${dateLabel}</strong>
-              <span>${session.length} ${session.length === 1 ? 'pase' : 'pases'}</span>
-            </div>
-            <div class="drilldown-session-stats">
-              <span>Mejor: <strong>${formatTime(bestSplitMs)}</strong></span>
-              <span>Ritmo: <strong>${sessionPaceStr}</strong></span>
-            </div>
-            <div class="drilldown-session-chart">
-              ${boxplotMarkup}
-            </div>
-          </div>`;
       }).join('');
 
       previousSessionsSectionHTML = `
@@ -357,12 +325,45 @@ class MetricsModal {
     this.bodyEl.innerHTML = zonesHTML + metricsHTML + boxplotHTML + lapsHTML + previousSessionsSectionHTML + `
       <div class="modal-actions-bar metrics-actions">
         <button type="button" id="metrics-reset-session" class="btn-secondary btn-danger" ${canReset ? '' : 'disabled'}>
-          Borrar sesión
+          Borrar todo el historial
         </button>
         <button type="button" id="metrics-delete-swimmer" class="btn-secondary btn-danger">
           Eliminar nadador
         </button>
       </div>`;
+
+    const activeSessions = [currentSession, ...previousSessions].filter(s => s && s.length > 0);
+    bindSessionCardActions(this.bodyEl, activeSessions, {
+      onTag: async (session, tag) => {
+        const ids = (session || []).map(l => l.id).filter(Boolean);
+        if (repository && typeof repository.updateLapsTag === 'function') {
+          await repository.updateLapsTag(ids, tag);
+        }
+        const idSet = new Set(ids);
+        for (const lap of this.laps) {
+          if (idSet.has(lap.id)) {
+            if (tag) {
+              lap.sessionTag = tag;
+            } else {
+              delete lap.sessionTag;
+            }
+          }
+        }
+        this._renderBody(this.swimmer, this.laps);
+      },
+      onDelete: async (session) => {
+        const ids = (session || []).map(l => l.id).filter(Boolean);
+        if (repository && typeof repository.deleteLaps === 'function') {
+          await repository.deleteLaps(ids);
+        }
+        const idSet = new Set(ids);
+        this.laps = this.laps.filter(l => !idSet.has(l.id));
+        if (typeof this.callbacks.onDeleteSession === 'function') {
+          await this.callbacks.onDeleteSession(ids);
+        }
+        this._renderBody(this.swimmer, this.laps);
+      }
+    });
 
     const deleteLapBtns = this.bodyEl.querySelectorAll('.btn-lap-delete');
     deleteLapBtns.forEach(btn => {
@@ -380,7 +381,7 @@ class MetricsModal {
       resetButton.addEventListener('click', async () => {
         const swimmerName = this.swimmer?.name || 'este nadador';
         const confirmed = window.confirm(
-          `¿Quieres borrar los datos de la sesión de ${swimmerName}? Se eliminarán el cronómetro y los pases; el perfil del nadador se conservará.`
+          `¿Borrar TODO el historial de pases de ${swimmerName}? Se eliminarán el cronómetro y todos los pases; el perfil del nadador se conservará.`
         );
         if (!confirmed || typeof this.callbacks.onReset !== 'function') return;
 

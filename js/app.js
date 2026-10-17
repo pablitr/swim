@@ -9,13 +9,8 @@ import { computeSustainablePace } from './analytics/pace-calculator.js';
 import { renderBoxplotSVG } from './ui/boxplot-svg.js';
 import { telemetryService } from './telemetry/telemetry.js';
 import { partitionLapsIntoSessions } from './analytics/session-partitioner.js';
-
-const TIMER_STATE_LABELS_ES = {
-  [TIMER_STATES.IDLE]: 'Listo',
-  [TIMER_STATES.RUNNING]: 'En curso',
-  [TIMER_STATES.PAUSED]: 'Pausado',
-  [TIMER_STATES.STOPPED]: 'Detenido'
-};
+import { renderSessionCardHTML, bindSessionCardActions, escapeHtml } from './ui/session-card.js';
+import { buildSummaryRows, buildDetailRows, rowsToCsv, localDate } from './analytics/csv-export.js';
 
 class AppCoordinator {
   constructor() {
@@ -32,6 +27,7 @@ class AppCoordinator {
     this.showGlobalStats = this.showGlobalStats.bind(this);
     this.closeGlobalStats = this.closeGlobalStats.bind(this);
     this.showSwimmerDrillDown = this.showSwimmerDrillDown.bind(this);
+    this.exportCsv = this.exportCsv.bind(this);
     this._escapeHtml = this._escapeHtml.bind(this);
     this._handleKeyDown = this._handleKeyDown.bind(this);
   }
@@ -245,7 +241,6 @@ class AppCoordinator {
               ${this._escapeHtml(swimmer.name)}
             </button>
           </td>
-          <td><span class="status-indicator">${TIMER_STATE_LABELS_ES[card.timerState.state] || card.timerState.state}</span></td>
           <td>${laps.length}</td>
           <td>${best}</td>
           <td>${paceStr}</td>
@@ -274,7 +269,8 @@ class AppCoordinator {
       </div>
 
       <div class="stats-actions">
-        <button type="button" id="btn-export-csv" class="btn-secondary">Descargar CSV de la serie</button>
+        <button type="button" id="btn-export-csv-summary" class="btn-secondary">CSV resumen (por sesión)</button>
+        <button type="button" id="btn-export-csv-detail" class="btn-secondary">CSV detallado (por pase)</button>
       </div>
 
       <div class="modal-section-title" style="margin-top: var(--space-3);">Resumen por Nadador</div>
@@ -284,21 +280,23 @@ class AppCoordinator {
             <tr>
               <th>Carril</th>
               <th>Nombre</th>
-              <th>Estado</th>
               <th>Vueltas</th>
               <th>Mejor Pase</th>
               <th>Ritmo (Moda)</th>
             </tr>
           </thead>
           <tbody>
-            ${swimmerRows.length > 0 ? swimmerRows : '<tr><td colspan="6" style="text-align:center; padding:12px; color:var(--text-muted);">No hay datos registrados aún</td></tr>'}
+            ${swimmerRows.length > 0 ? swimmerRows : '<tr><td colspan="5" style="text-align:center; padding:12px; color:var(--text-muted);">No hay datos registrados aún</td></tr>'}
           </tbody>
         </table>
       </div>
     `;
 
-    const exportButton = document.getElementById('btn-export-csv');
-    if (exportButton) exportButton.addEventListener('click', () => this.exportCsv());
+    const btnSummary = document.getElementById('btn-export-csv-summary');
+    if (btnSummary) btnSummary.addEventListener('click', () => this.exportCsv('summary'));
+
+    const btnDetail = document.getElementById('btn-export-csv-detail');
+    if (btnDetail) btnDetail.addEventListener('click', () => this.exportCsv('detail'));
 
     const drilldownBtns = contentEl.querySelectorAll('.swimmer-drilldown-btn');
     drilldownBtns.forEach(btn => {
@@ -314,66 +312,39 @@ class AppCoordinator {
     }
   }
 
-  /** Download swimmer profiles, current timer state, and recorded laps as a CSV file. */
-  async exportCsv() {
-    const rows = [[
-      'ID Nadador', 'Nadador', 'Carril', 'Base 100 m (s)', 'Estado',
-      'Tiempo actual', 'Tiempo actual (ms)', 'Pase', 'Parcial (ms)',
-      'Acumulado (ms)', 'Fecha del pase'
-    ]];
-
+  /**
+   * Download swimmer profiles and recorded laps as a CSV file.
+   * @param {'summary'|'detail'} [mode='summary']
+   */
+  async exportCsv(mode = 'summary') {
+    const entries = [];
     for (const card of this.cards.values()) {
       const swimmer = card.swimmer;
-      const timer = card.timerState;
-      const elapsedMs = timerEngine.getElapsedMs(timer);
-      const profileAndTimer = [
-        swimmer.id,
-        swimmer.name,
-        swimmer.lane ?? '',
-        swimmer.baseline100mSeconds ?? swimmer.baseline100m ?? '',
-        TIMER_STATE_LABELS_ES[timer.state] || timer.state,
-        formatTime(elapsedMs),
-        Math.round(elapsedMs)
-      ];
-
       const persistedLaps = (repository && typeof repository.getLaps === 'function')
         ? await repository.getLaps(swimmer.id)
         : [];
-      const exportLaps = persistedLaps.length >= card.laps.length ? persistedLaps : card.laps;
-
-      if (exportLaps.length === 0) {
-        rows.push([...profileAndTimer, '', '', '', '']);
-        continue;
-      }
-
-      for (const lap of exportLaps) {
-        const timestamp = lap.timestamp ? new Date(lap.timestamp).toISOString() : '';
-        rows.push([
-          ...profileAndTimer,
-          lap.lapNumber,
-          lap.splitDurationMs,
-          lap.cumulativeDurationMs,
-          timestamp
-        ]);
-      }
+      const laps = persistedLaps.length >= card.laps.length ? persistedLaps : card.laps;
+      entries.push({ swimmer, laps });
     }
 
-    const csvEscape = (value) => {
-      let cell = String(value ?? '');
-      if (/^[=+@-]/.test(cell)) cell = `'${cell}`;
-      return `"${cell.replace(/"/g, '""')}"`;
-    };
-    const csv = `\uFEFF${rows.map(row => row.map(csvEscape).join(';')).join('\r\n')}`;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `swimcoach-dataset-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const rows = mode === 'detail' ? buildDetailRows(entries) : buildSummaryRows(entries);
+    const csv = rowsToCsv(rows);
+
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `swimcoach-${mode === 'detail' ? 'detalle' : 'resumen'}-${localDate(Date.now())}.csv`;
+      link.style.display = 'none';
+      if (document.body && typeof document.body.appendChild === 'function') {
+        document.body.appendChild(link);
+        if (typeof link.click === 'function') link.click();
+        if (typeof link.remove === 'function') link.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    return csv;
   }
 
   /**
@@ -399,13 +370,7 @@ class AppCoordinator {
    * @returns {string}
    */
   _escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    return escapeHtml(str);
   }
 
   /**
@@ -471,50 +436,14 @@ class AppCoordinator {
         globalMax = 0;
       }
 
+      const baselineVal = swimmer?.baseline100mSeconds ? Number(swimmer.baseline100mSeconds) : undefined;
       sessionsHTML = recentSessions.map((session, sIdx) => {
-        let dateLabel = `Sesión ${sessions.length - sIdx}`;
-        if (session[0]?.timestamp) {
-          const d = new Date(session[0].timestamp);
-          if (!isNaN(d.getTime())) {
-            dateLabel = d.toLocaleDateString('es-ES', {
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-          }
-        }
-        const splitsSeconds = session.map(l => l.splitDurationMs / 1000);
-        const bestSplitMs = Math.min(...session.map(l => l.splitDurationMs));
-        const paceData = computeSustainablePace(splitsSeconds);
-        const paceStr = (paceData.sustainablePace != null)
-          ? `${paceData.sustainablePace.toFixed(2)}s`
-          : '--';
-
-        const baselineVal = swimmer?.baseline100mSeconds ? Number(swimmer.baseline100mSeconds) : undefined;
-        const boxplotMarkup = renderBoxplotSVG(splitsSeconds, {
+        return renderSessionCardHTML(session, {
+          fallbackLabel: `Sesión ${sessions.length - sIdx}`,
           baseline: baselineVal,
-          width: 440,
-          height: 75,
-          globalMin: globalMin,
-          globalMax: globalMax
+          globalMin,
+          globalMax
         });
-
-        return `
-          <div class="drilldown-session-card">
-            <div class="drilldown-session-meta">
-              <strong>${dateLabel}</strong>
-              <span>${session.length} ${session.length === 1 ? 'pase' : 'pases'}</span>
-            </div>
-            <div class="drilldown-session-stats">
-              <span>Mejor: <strong>${formatTime(bestSplitMs)}</strong></span>
-              <span>Ritmo: <strong>${paceStr}</strong></span>
-            </div>
-            <div class="drilldown-session-chart">
-              ${boxplotMarkup}
-            </div>
-          </div>
-        `;
       }).join('');
     } else {
       sessionsHTML = `
@@ -564,6 +493,20 @@ class AppCoordinator {
         ${sessionsHTML}
       </div>
     `;
+
+    bindSessionCardActions(contentEl, recentSessions, {
+      onTag: async (session, tag) => {
+        await repository.updateLapsTag(session.map(l => l.id), tag);
+        await this.showSwimmerDrillDown(swimmerId);
+      },
+      onDelete: async (session) => {
+        const ids = session.map(l => l.id);
+        await repository.deleteLaps(ids);
+        const card = this.cards.get(swimmerId);
+        if (card) await card.handleSessionDeleted(ids);
+        await this.showSwimmerDrillDown(swimmerId);
+      }
+    });
 
     const backBtn = contentEl.querySelector('#btn-drilldown-back');
     if (backBtn) {

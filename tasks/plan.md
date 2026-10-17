@@ -1,253 +1,333 @@
-# Plan de Refactorización Guiada: SwimCoach Tracker (`tasks/plan.md`)
+# Plan: CSV legible, etiquetas por sesión y borrado por sesión
 
-> **Cómo usar este plan con Flash 3.8 (iterando con `/clear`):**
-> En cada iteración, ejecuta `/clear` y envíale a Flash 3.8 este prompt cambiando el número de paso:
+> **Cómo usar este plan (iterando con `/clear`):** en cada iteración enviar:
 > ```text
 > Lee @tasks/plan.md y @tasks/todo.md. Ejecuta ÚNICAMENTE el Paso N del plan.
-> Respeta todas las Invariantes Estrictas y Casos Borde descritos en ese paso, ejecuta el comando de verificación al terminar, marca el paso como completado en tasks/todo.md y detente.
+> Respeta las Invariantes y Casos Borde de ese paso, corre su comando de verificación, marca las casillas en tasks/todo.md y detente.
 > ```
+> Plan anterior (completado): `tasks/archive/2026-10-01-refactor-plan.md`.
 
 ---
 
-## Resumen de Arquitectura y Problemas que Resuelve este Plan
+## Análisis crítico del CSV actual (`swimcoach-dataset-2026-10-17.csv`)
 
-1. **Los tiempos no se pierden al pulsar "Detener" (`#btn-stop-<id>`):**
-   - Cuando un nadador está en `RUNNING` y el entrenador pulsa **Detener**, si existe tiempo transcurrido desde el último pase (`elapsedMs - lastLapCumulativeMs >= 10`), la tarjeta registra automáticamente ese tramo final como pase en memoria (`this.laps`) y en `IndexedDB` antes de pasar el cronómetro a estado `STOPPED`.
-   - En estado `STOPPED`, los pases de la serie recién terminada permanecen visibles en la tarjeta hasta que se inicie una nueva serie (`Iniciar`) o se reinicie el reloj.
-2. **Separación estricta entre "Reiniciar cronómetro" y "Borrar sesión":**
-   - **Reiniciar cronómetro (`#metrics-modal-reset` o reinicio maestro):** Pone el reloj de la tarjeta en `00:00.00` (`IDLE`) y limpia `card.laps` para la próxima serie, pero **jamás borra `IndexedDB`** ni vacía la vista del modal de Métricas Individuales.
-   - **Borrar sesión (`#metrics-reset-session`):** Única acción (junto con eliminar nadador) que borra los pases históricos de `IndexedDB` (`clearHistorical: true`).
-3. **Conexión total entre Métricas Individuales (Lupa) y Estadísticas Globales:**
-   - Ambas vistas comparten el mismo particionador de sesiones (`js/analytics/session-partitioner.js`) y la misma fuente de verdad (`repository.getLaps(swimmer.id)` en `IndexedDB`).
-   - **Métricas Individuales (Lupa)** muestra arriba la **Serie Actual / Última Serie** (zonas, métricas rápidas, boxplot y tabla de pases) y debajo la lista de **Series Anteriores** con sus boxplots.
-   - **Estadísticas Globales** lee de `IndexedDB` (no solo de `card.laps` en memoria), por lo que nunca pierde las vueltas ni los ritmos cuando un cronómetro se detiene o se reinicia a `00:00.00`.
-4. **Service Worker sin bloqueo por caché vieja (`sw.js`):**
-   - Estrategia **Network-First con fallback a caché offline** (`swimcoach-v7`) para que el navegador cargue siempre el código JS actualizado cuando hay red y funcione offline en la pileta.
+| Problema | Evidencia | Propuesta |
+|---|---|---|
+| Los tiempos están en ms crudos | `Parcial (ms)=63956` | `01:03.96` para leer + `63,96` (segundos con coma decimal, numérico en Excel ES) |
+| `Estado` no aporta nada | siempre `Detenido`: es un snapshot del reloj en vivo | **Eliminar** (y también de la tabla de Estadísticas Globales) |
+| `Tiempo actual` / `Tiempo actual (ms)` engañan | es el reloj *en vivo* de la tarjeta, repetido en cada fila y sin relación con sesiones viejas | **Eliminar**; se reemplaza por `Total` por sesión |
+| Fecha en UTC ISO | `2026-10-17T00:02:49Z` cuando localmente era 16/10 21:02 | Fecha local `2026-10-16` + hora local `21:02` |
+| El nombre del archivo también usa la fecha UTC | `swimcoach-dataset-2026-10-17.csv` exportado el 16/10 | Fecha local en el nombre |
+| `ID Nadador` es ruido interno | `swimmer-1792195128609-impjl` | **Eliminar** (el nombre ya identifica) |
+| No hay identificador de sesión | hay que deducirlo de `Pase` = 1 | Columnas `Fecha` + `Hora inicio` + `Etiqueta` |
+| Formato largo (1 fila por pase): difícil de leer | 2 filas por nadador para una sola serie | **CSV resumen**: 1 fila por sesión y los pases en columnas (`Pase 1`, `Pase 2`…) |
 
----
-
-## Grafo de Dependencias
+**Así queda el CSV resumen con los mismos datos** (14 filas en vez de 35; el nombre es ilustrativo):
 
 ```text
-Paso 1: Captura automática del parcial final al Detener (js/ui/swimmer-card.js + tests)
-   │
-   ▼
-Paso 2: Módulo compartido de Sesiones (js/analytics/session-partitioner.js + js/app.js)
-   │
-   ├──► Paso 3: Rediseño de Métricas Individuales (Lupa) y Reset no destructivo (js/ui/metrics-modal.js)
-   │
-   └──► Paso 4: Sincronización de Estadísticas Globales con IndexedDB (js/app.js)
-           │
-           ▼
-        Paso 5: Service Worker Network-First y Validación End-to-End (sw.js + suite completa)
+Fecha;Hora inicio;Carril;Nadador;Etiqueta;Pases;Total;Total (s);Mejor;Mejor (s);Promedio;Promedio (s);Pase 1;Pase 2
+2026-10-16;21:02;1;Juan Pérez;4x100 libre;2;02:06.86;126,86;01:02.91;62,91;01:03.43;63,43;01:03.96;01:02.91
 ```
 
 ---
 
-## Paso 1: Captura Automática del Parcial Final al Detener el Cronómetro
+## Decisiones de diseño (ya acordadas)
 
-### Objetivo
-Garantizar que cuando el entrenador pulsa **Detener** (`#btn-stop-<id>`) mientras el nadador está nadando (`RUNNING`), el tiempo transcurrido desde el último pase (o desde `00:00.00` si no hubo pases previos) se guarde automáticamente como el pase final de la serie en `this.laps` y en `IndexedDB`, antes de transicionar el reloj a `STOPPED`.
+1. **Dónde se guarda la etiqueta:** como `lap.sessionTag` en **todos** los pases de la sesión. No se toca el esquema de IndexedDB (sigue en `DB_VERSION = 1`, sin migración). Las sesiones se siguen deduciendo con `partitionLapsIntoSessions`. Para leer la etiqueta de una sesión se usa el primer `sessionTag` no vacío entre sus pases, así que los pases que se agreguen después de etiquetar igual la muestran.
+2. **Clave de sesión:** `session[0].id` (el id del primer pase). Se usa solo en el DOM (`data-session-key`) para encontrar la sesión al hacer click.
+3. **Borrar una sesión:** borra de IndexedDB sus pases. Si alguno de esos pases está en `card.laps` (es la serie activa de la tarjeta), la tarjeta se reinicia con `handleReset()` sin `clearHistorical`.
+4. **El botón rojo actual "Borrar sesión"** (`#metrics-reset-session`) en realidad borra *todo* el historial. Pasa a llamarse **"Borrar todo el historial"** (el id no cambia) para no confundirlo con el nuevo tacho por sesión.
+5. **Edición de la etiqueta con input inline:** Enter o blur guarda, Esc cancela. Máximo 60 caracteres, con trim. Un texto vacío borra la etiqueta.
+6. **Un solo renderizador de tarjetas de sesión** (`js/ui/session-card.js`) compartido por la Lupa y por el drill-down de Estadísticas Globales. Hoy ese HTML está duplicado en los dos lados.
 
-### Archivos a inspeccionar y modificar
-- `js/ui/swimmer-card.js` (método `handleStop()` y flujo hacia `handleLap()`)
-- `tests/unit/swimmer_card.test.js`
-- `tests/unit/feature2_empirical.test.js`
+> [!IMPORTANT]
+> **Invariante de tests:** la etiqueta de apertura debe quedar exactamente como `<div class="drilldown-session-card">`, sin atributos extra, porque `challenger_m2_empirical.test.js` hace `split` sobre ese string. Los `data-*` van en los botones. Además, el texto `N pases` tiene que seguir dentro de cada tarjeta.
 
-### Especificación Técnica e Instrucciones de Razonamiento
-1. En `SwimmerCard.handleStop()` (`js/ui/swimmer-card.js`):
-   - Antes de invocar `timerEngine.stop(this.swimmer.id)`, verifica si `this.timerState.state === TIMER_STATES.RUNNING`.
-   - Si está en `RUNNING`, calcula el tiempo parcial pendiente de registrar:
-     - `const currentElapsedMs = timerEngine.getElapsedMs(this.timerState);`
-     - `const lastLapCumulativeMs = Number(this.timerState.lastLapCumulativeMs) || 0;`
-     - `const pendingSplitMs = currentElapsedMs - lastLapCumulativeMs;`
-   - **Condición exacta de auto-registro:** Si `pendingSplitMs >= 10` (10 milisegundos o más), llama a `await this.handleLap()` antes de llamar a `await timerEngine.stop(this.swimmer.id)`.
-2. **Por qué el umbral `pendingSplitMs >= 10` y solo en `RUNNING` (Casos Borde Críticos):**
-   - **Caso borde 1 (`PAUSED -> STOPPED`):** Si el entrenador ya había pulsado `Pase+Pausa` o `Pausar`, el estado es `PAUSED`. Al pulsar luego `Detener`, **no** debe registrarse otro pase (esto preserva el test `EMP-F2-10`).
-   - **Caso borde 2 (`handleLap()` seguido inmediatamente de `handleStop()` en el mismo tick de CPU):** En el test existente `EMP-F2-07`, se ejecuta `await card.handleLap(); await card.handleStop();` sin `setTimeout` intermedio (`pendingSplitMs` es `0`–`2` ms). El umbral `pendingSplitMs >= 10` evita crear un segundo pase artificial de `0ms` y mantiene `EMP-F2-07` en verde.
-   - **Caso real en pileta (`RUNNING` con tiempo transcurrido `>= 10ms`):** El entrenador inicia el reloj (o toma el pase 1) y cuando el nadador termina toca `Detener`. Como `pendingSplitMs >= 10`, se registra automáticamente el pase final en `this.laps` y en `IndexedDB`, y luego el reloj queda en `STOPPED` mostrando el tiempo final y los últimos pases en la tarjeta.
-3. **Invariantes Estrictas:**
-   - `handleStop()` **no** debe vaciar `this.laps`. Los pases de la serie recién detenida deben seguir mostrándose en `#recent-laps-list-<id>` mientras el estado sea `STOPPED`.
-   - `TimerEngine.stop()` en `js/timing/timer-engine.js` debe mantener su contrato de bajo nivel intacto para no romper `TC-T1-104` en `tests/unit/timing.test.js`.
+> [!WARNING]
+> **Limitación conocida:** si se etiqueta una sesión en curso y después se borran *todos* los pases etiquetados, dejando solo los nuevos, la etiqueta se pierde. Es aceptable para la v1.
 
-### Tests a añadir / verificar
-- En `tests/unit/swimmer_card.test.js`, añade el test `TC-SC-212`:
-  1. Inicia una tarjeta (`await card.handleStart()`), espera `40ms`, y llama a `await card.handleStop()` sin haber llamado a `handleLap()`.
-  2. Verifica que `card.timerState.state === TIMER_STATES.STOPPED`.
-  3. Verifica que `card.laps.length === 1`, que `card.laps[0].lapNumber === 1`, y que `await repository.getLaps(swimmer.id)` contiene exactamente ese pase persistido.
-  4. Verifica que `card._recentLapsListEl.innerHTML` incluye `'V1'` (el pase sigue visible en la tarjeta tras detener).
+---
 
-### Comando de Verificación del Paso 1
-```bash
-node --test tests/unit/swimmer_card.test.js tests/unit/feature2_empirical.test.js tests/unit/timing.test.js
+## Grafo de dependencias
+
+```mermaid
+flowchart TD
+  P1["Paso 1: Datos — helpers de sesión + repository.updateLapsTag/deleteLaps"]
+  P2["Paso 2: js/ui/session-card.js (render + lápiz + tacho)"]
+  P3["Paso 3: Drill-down de Estadísticas Globales usa session-card + SwimmerCard.handleSessionDeleted"]
+  P4["Paso 4: Lupa (metrics-modal) usa session-card + header de Serie actual"]
+  P5["Paso 5: js/analytics/csv-export.js (builders puros)"]
+  P6["Paso 6: app.js — 2 botones CSV, quitar columna Estado"]
+  P7["Paso 7: CSS + sw.js v8 + suite completa"]
+  P1 --> P2 --> P3 --> P4
+  P1 --> P5 --> P6
+  P4 --> P7
+  P6 --> P7
 ```
 
 ---
 
-## Paso 2: Módulo Compartido de Partición de Sesiones (`js/analytics/session-partitioner.js`)
+## Paso 1: Helpers de sesión y operaciones por lote en el repositorio
 
-### Objetivo
-Extraer la lógica que agrupa pases cronológicos en series/sesiones de entrenamiento a un módulo compartido (`js/analytics/session-partitioner.js`) para que tanto **Métricas Individuales (Lupa)** como **Estadísticas Globales** utilicen exactamente la misma definición de serie actual e historial de sesiones.
+**Archivos:** `js/analytics/session-partitioner.js`, `js/storage/repository.js`, `tests/unit/analytics.test.js`, `tests/unit/storage.test.js`
 
-### Archivos a inspeccionar y modificar
-- Crear `js/analytics/session-partitioner.js`
-- Modificar `js/app.js`
-- Modificar `tests/unit/analytics.test.js`
+1. En `session-partitioner.js`, agregar estos exports (sin tocar las funciones que ya existen):
+   ```js
+   export const SESSION_TAG_MAX_LENGTH = 60;
+   export function normalizeSessionTag(raw) {
+     return String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, SESSION_TAG_MAX_LENGTH);
+   }
+   export function getSessionTag(session) {
+     if (!Array.isArray(session)) return '';
+     for (const lap of session) {
+       const t = normalizeSessionTag(lap?.sessionTag);
+       if (t) return t;
+     }
+     return '';
+   }
+   export function getSessionKey(session) {
+     return (Array.isArray(session) && session[0]?.id) ? String(session[0].id) : '';
+   }
+   ```
+2. En `repository.js`, agregar dos métodos a `SwimmerRepository`, usando `get`, `put` y `deleteItem`, que ya están importados:
+   ```js
+   async updateLapsTag(lapIds, tag) {
+     const clean = normalizeSessionTag(tag);          // import desde ../analytics/session-partitioner.js
+     for (const id of (lapIds || [])) {
+       const lap = await get(STORES.LAPS, id);
+       if (!lap) continue;
+       if (clean) lap.sessionTag = clean; else delete lap.sessionTag;
+       await put(STORES.LAPS, lap);
+     }
+     return clean;
+   }
+   async deleteLaps(lapIds) {
+     for (const id of (lapIds || [])) { if (id) await deleteItem(STORES.LAPS, id); }
+   }
+   ```
+3. Tests:
+   - `analytics.test.js`: `normalizeSessionTag` (trim, colapsa espacios, corta a 60, `null` → `''`); `getSessionTag` devuelve el primer tag no vacío; `getSessionKey` devuelve `''` para una sesión vacía.
+   - `storage.test.js` (usar el mismo setup que el archivo, con fake-indexeddb o memoria): guardar 3 pases → `updateLapsTag([id1,id2], '  200 m  espalda ')` → `getLaps` devuelve `sessionTag === '200 m espalda'` en esos 2 pases y nada en el 3.º; `updateLapsTag([id1], '')` borra la propiedad; `deleteLaps([id1,id3])` deja solo `id2`.
 
-### Especificación Técnica e Instrucciones de Razonamiento
-1. Crea `js/analytics/session-partitioner.js` y exporta dos funciones puras:
-   - `partitionLapsIntoSessions(allLaps)`:
-     - Si `!Array.isArray(allLaps) || allLaps.length === 0`, devuelve `[]`.
-     - Crea una copia ordenada cronológicamente por `timestamp` ascendente (si ambos objetos tienen `timestamp` numérico; si no tienen `timestamp`, preserva su orden relativo original).
-     - Recorre los pases y abre una nueva sesión cada vez que para el pase actual respecto al anterior (`prevLap`) se cumpla cualquiera de estas dos condiciones:
-       1. Reinicio de numeración de vuelta: `(lap.lapNumber === 1 && prevLap.lapNumber !== 1) || (lap.lapNumber <= prevLap.lapNumber)`
-       2. Brecha temporal mayor a 20 minutos: `Boolean(lap.timestamp && prevLap.timestamp && (lap.timestamp - prevLap.timestamp > 20 * 60 * 1000))`
-     - Devuelve `Array<Array<Object>>` con las sesiones en orden cronológico (la primera es la más antigua, la última es la más reciente).
-   - `splitCurrentAndHistoricalSessions(allLaps)`:
-     - Llama a `const sessions = partitionLapsIntoSessions(allLaps);`
-     - Si `sessions.length === 0`, devuelve `{ sessions: [], currentSession: [], previousSessions: [] }`.
-     - Devuelve:
-       - `sessions`: todas las sesiones en orden cronológico.
-       - `currentSession`: `sessions[sessions.length - 1]` (la serie/sesión más reciente o activa).
-       - `previousSessions`: `sessions.slice(0, -1).reverse()` (las sesiones anteriores en orden cronológico inverso, de más reciente a más antigua).
-2. En `js/app.js`:
-   - Reemplaza la función local `partitionLapsIntoSessions` importándola desde `./analytics/session-partitioner.js`.
-3. En `tests/unit/analytics.test.js`:
-   - Añade un bloque `describe('Session Partitioner Tests', ...)` que pruebe:
-     - Partición por reinicio de `lapNumber` (`1, 2, 3 -> 1, 2`).
-     - Partición por brecha de tiempo `> 20 min` aunque `lapNumber` continúe.
-     - `splitCurrentAndHistoricalSessions` devolviendo `currentSession` (última serie) y `previousSessions` en orden inverso.
-
-### Comando de Verificación del Paso 2
-```bash
-node --test tests/unit/analytics.test.js tests/unit/feature4_drilldown.test.js tests/unit/challenger_m2_empirical.test.js
-```
-
----
-
-## Paso 3: Rediseño de Métricas Individuales (Lupa) y Separación de Reinicio de Reloj vs Borrado de Historial
-
-### Objetivo
-1. Evitar que pulsar **Reiniciar cronómetro** (`#metrics-modal-reset`) dentro del modal de Métricas borre visualmente los pases del modal.
-2. Conectar el diseño de **Métricas Individuales (Lupa)** con el de **Estadísticas Globales**: mostrar en la parte superior los datos de la **Serie Actual / Última Serie** (`currentSession`) y debajo una sección de **Series Anteriores** (`previousSessions`) con tarjetas `.drilldown-session-card` y boxplots normalizados.
-
-### Archivos a inspeccionar y modificar
-- `js/ui/metrics-modal.js`
-- `js/ui/swimmer-card.js`
-- `tests/unit/metrics_modal.test.js`
-
-### Especificación Técnica e Instrucciones de Razonamiento
-1. **Diferenciación estricta entre los dos botones de reinicio en `js/ui/metrics-modal.js` y `js/ui/swimmer-card.js`:**
-   - **Botón 1: `#metrics-modal-reset` (icono de reloj en el header del modal — "Reiniciar cronómetro"):**
-     - Propósito: Poner el cronómetro de la tarjeta en `00:00.00` (`IDLE`) y vaciar `card.laps` en la tarjeta para que quede lista para una nueva serie, **conservando intacto el historial en `IndexedDB` y en el modal**.
-     - En `MetricsModal._init()` (`js/ui/metrics-modal.js`), cuando se confirma `#metrics-modal-reset`:
-       - Llama a `await this.callbacks.onReset({ clearHistorical: false })`.
-       - **Corrección crítica:** NO asignes `this.laps = []`. Tras ejecutar `onReset({ clearHistorical: false })`, si `repository && typeof repository.getLaps === 'function'`, consulta `const persisted = await repository.getLaps(this.swimmer.id);` y si `persisted && persisted.length > 0`, actualiza `this.laps = persisted` (si `persisted` está vacío pero `this.laps` ya tenía datos en memoria en un entorno de test sin DB, conserva `this.laps`). Luego llama a `this._renderBody(this.swimmer, this.laps)`.
-   - **Botón 2: `#metrics-reset-session` (botón rojo inferior — "Borrar sesión"):**
-     - Propósito: Borrar el historial de pases en `IndexedDB` (`clearHistorical: true`) y reiniciar el reloj.
-     - Cuando se confirma `#metrics-reset-session`, llama a `await this.callbacks.onReset({ clearHistorical: true })`, asigna `this.laps = []` y re-renderiza `this._renderBody(this.swimmer, this.laps)` mostrando `"Sin pases registrados aún."`.
-2. **Separación de "Serie Actual" y "Series Anteriores" en `MetricsModal._renderBody(swimmer, laps)`:**
-   - Importa `splitCurrentAndHistoricalSessions` desde `../analytics/session-partitioner.js` y `renderBoxplotSVG` desde `./boxplot-svg.js`.
-   - Obtén `{ currentSession, previousSessions } = splitCurrentAndHistoricalSessions(laps)`.
-   - **Métricas rápidas (`.quick-metrics`), Boxplot principal (`#metrics-boxplot-<id>`) y Tabla de pases (`.laps-table`):**
-     - Calcúlalos y renderízalos usando `currentSession` (en lugar de mezclar todos los pases de `laps` en una sola tabla plana).
-     - En la tabla de pases de `currentSession`, mantén exactamente la misma estructura HTML (`<tr class="${lap.isOutlier ? 'outlier' : ''}">`, `<strong>#${lap.lapNumber}</strong>`, `.btn-lap-delete` con `data-lap-id` y `data-lap-number`).
-   - **Nueva sección "Series Anteriores" dentro del mismo modal:**
-     - Si `previousSessions.length > 0`, calcula `globalMin` y `globalMax` en segundos entre todas las sesiones (`[currentSession, ...previousSessions]`) y renderiza debajo de la tabla de pases:
-       ```html
-       <div class="modal-section-title">Series Anteriores (${previousSessions.length})</div>
-       <div class="drilldown-sessions-stack">
-         <!-- Una tarjeta .drilldown-session-card por cada sesión en previousSessions -->
-       </div>
-       ```
-     - Cada `.drilldown-session-card` debe mostrar la fecha/hora (o `Serie #N`), cantidad de pases (`X pases`), `Mejor: <strong>...</strong>`, `Ritmo: <strong>...</strong>` y el gráfico `renderBoxplotSVG(splitsSeconds, { baseline, width: 440, height: 75, globalMin, globalMax })` — exactamente igual que en `showSwimmerDrillDown` de `js/app.js`.
-3. **Invariantes Estrictas (para no romper `TC-MM-301`..`TC-MM-307`):**
-   - Cuando `laps` está vacío (`[]`), debe seguir mostrándose el texto exacto `"Sin pases registrados aún."`.
-   - Cuando se elimina un pase con `_handleDeleteLap(lapId, lapNum)`, se elimina de `IndexedDB` (`repository.deleteLap(lapId)`) y de `this.laps` preservando los números originales de vuelta (`#1` y `#3` si se borra `#2`).
-   - Al actualizar `state.lastLapCumulativeMs` tras borrar un pase, usa el último pase restante de `currentSession` (`const updatedCurrent = splitCurrentAndHistoricalSessions(this.laps).currentSession; const lastLap = updatedCurrent.length > 0 ? updatedCurrent[updatedCurrent.length - 1] : null;`).
-
-### Tests a añadir en `tests/unit/metrics_modal.test.js`
-- `TC-MM-308`: Verificar que pulsar `#metrics-modal-reset` invoca `onReset({ clearHistorical: false })` y **conserva** los pases visibles en el modal (no muestra `"Sin pases registrados aún."`), mientras que pulsar `#metrics-reset-session` invoca `onReset({ clearHistorical: true })`, limpia `repository` y muestra `"Sin pases registrados aún."`.
-- `TC-MM-309`: Pasar a `metricsModal.open()` pases de 2 series distintas (Serie 1: `lapNumber: 1, 2`; Serie 2: `lapNumber: 1, 2, 3`) y verificar que la tabla `.laps-table` muestra los 3 pases de la Serie 2 y que se renderiza `.drilldown-session-card` en `Series Anteriores` para la Serie 1.
-
-### Comando de Verificación del Paso 3
-```bash
-node --test tests/unit/metrics_modal.test.js tests/unit/swimmer_card.test.js
-```
+**Verificación:** `node --test tests/unit/analytics.test.js tests/unit/storage.test.js`
 
 ---
 
-## Paso 4: Conectar Estadísticas Globales a IndexedDB y Unificar con Vista Individual
+## Paso 2: Renderizador compartido de tarjetas de sesión (`js/ui/session-card.js`)
 
-### Objetivo
-Corregir `AppCoordinator.showGlobalStats()` en `js/app.js` para que lea todos los pases persistidos en `IndexedDB` (`repository.getLaps(swimmer.id)`) en lugar de depender únicamente de `card.laps` (que se vacía al reiniciar el reloj o al recargar en `IDLE`).
+**Archivos:** [NEW] `js/ui/session-card.js`, [NEW] `tests/unit/session_card.test.js`
 
-### Archivos a inspeccionar y modificar
-- `js/app.js`
-- `tests/unit/feature4_drilldown.test.js`
-- `tests/unit/challenger_m2_empirical.test.js`
+Exports:
 
-### Especificación Técnica e Instrucciones de Razonamiento
-1. **Problema actual en `js/app.js` (líneas 199–240):**
-   - `showGlobalStats()` toma `const allLaps = [...this.cards.values()].flatMap(c => c.laps);`. Si un nadador completó una serie y reinició el cronómetro para la siguiente, `card.laps` es `[]` y `Estadísticas Globales` muestra `0` vueltas y `--` en Mejor Pase y Ritmo.
-2. **Patrón de Renderizado Dual (Síncrono Inicial + Hidratación IndexedDB) — MUY IMPORTANTE:**
-   - Algunos tests existentes (`TC-DD-401`, `TC-DD-402` y `challenger_m2_empirical.test.js`) llaman a `app.showGlobalStats()` **sin `await`** e inspeccionan `contentEl.innerHTML` en la línea inmediatamente siguiente.
-   - Por lo tanto, implementa `async showGlobalStats()` usando un método auxiliar privado `_renderGlobalStatsView(lapsBySwimmer)`:
-     1. **Paso síncrono inmediato (antes del primer `await`):** Construye un `Map` inicial `initialLapsMap` donde para cada `card` de `this.cards.values()` usas `card.laps || []`, y llama inmediatamente a `this._renderGlobalStatsView(initialLapsMap)`. Esto abre el modal y puebla el DOM de forma síncrona en `0ms` (garantizando compatibilidad total con cualquier test que no use `await`).
-     2. **Paso asíncrono de hidratación desde IndexedDB:** Si `repository && typeof repository.getLaps === 'function'`, consulta en paralelo los pases persistidos de todos los nadadores:
-        ```javascript
-        const entries = await Promise.all(
-          [...this.cards.values()].map(async (card) => {
-            const dbLaps = await repository.getLaps(card.swimmer.id);
-            const effectiveLaps = (Array.isArray(dbLaps) && dbLaps.length >= card.laps.length)
-              ? dbLaps
-              : card.laps;
-            return [card.swimmer.id, effectiveLaps];
-          })
-        );
-        ```
-     3. Vuelve a llamar a `this._renderGlobalStatsView(new Map(entries))` solo si el modal sigue en vista de tabla resumen (es decir, si el usuario o un test no navegó ya al drill-down `.drilldown-nav` mientras se resolvía la promesa: `if (!contentEl.querySelector('#btn-drilldown-back'))`).
-3. **Mejora de datos en `_renderGlobalStatsView(lapsBySwimmer)`:**
-   - Calcula `allLaps`, `totalLaps` y `bestSplitMs` a partir de todos los arrays de `lapsBySwimmer`.
-   - Para cada fila de nadador en `Resumen por Nadador`, usa `const laps = lapsBySwimmer.get(swimmer.id) || [];` para calcular `laps.length`, `best` y `paceStr`.
-4. **Limpieza en `showSwimmerDrillDown(swimmerId)` (`js/app.js`):**
-   - Cambia el título `"Últimas Sesiones de Entrenamiento (Hasta 5)"` por `"Historial de Sesiones de Entrenamiento"` (ya que muestra hasta 20 sesiones).
-
-### Tests a añadir en `tests/unit/feature4_drilldown.test.js`
-- Añade el test `TC-DD-407`:
-  1. Crea un nadador, registra 3 pases con `card.handleStart()` y `card.handleLap()`, y luego reinicia el cronómetro de la tarjeta con `await card.handleReset()` (dejando `card.laps` en `[]`, pero con los 3 pases en `repository`).
-  2. Llama a `await app.showGlobalStats()`.
-  3. Verifica que `global-stats-content` muestra `Total Vueltas` = `3` (no `0`), y que la fila del nadador muestra `3` vueltas, su mejor pase y su ritmo sostenible calculado desde `IndexedDB`.
-
-### Comando de Verificación del Paso 4
-```bash
-node --test tests/unit/feature4_drilldown.test.js tests/unit/challenger_m2_empirical.test.js
+```js
+export function escapeHtml(str)                       // copia exacta de AppCoordinator._escapeHtml
+export function formatSessionDate(timestamp, fallback) // toLocaleDateString('es-ES',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) o fallback
+export function renderSessionMetaHTML(session, { fallbackLabel })  // fila: fecha + etiqueta + lápiz | "N pases" + tacho
+export function renderSessionCardHTML(session, { fallbackLabel, baseline, globalMin, globalMax })
+export function bindSessionCardActions(containerEl, sessions, { onTag, onDelete })
 ```
+
+`renderSessionMetaHTML` devuelve este markup (la etiqueta va escapada con `escapeHtml`):
+
+```html
+<div class="drilldown-session-meta">
+  <div class="session-title" data-session-key="KEY">
+    <strong>${dateLabel}</strong>
+    ${tag ? `<span class="session-tag">${escapeHtml(tag)}</span>` : ''}
+    <button type="button" class="btn-icon btn-session-tag" data-session-key="KEY"
+            aria-label="Etiquetar sesión" title="Etiquetar sesión"><!-- svg lápiz --></button>
+  </div>
+  <div class="session-meta-right">
+    <span>${n} ${n === 1 ? 'pase' : 'pases'}</span>
+    <button type="button" class="btn-icon btn-session-delete" data-session-key="KEY"
+            aria-label="Borrar sesión" title="Borrar sesión"><!-- svg tacho, igual al de .btn-lap-delete --></button>
+  </div>
+</div>
+```
+
+SVG del lápiz (estilo Feather, igual que el resto de los íconos):
+`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`
+
+`renderSessionCardHTML` devuelve exactamente lo que hoy arma `showSwimmerDrillDown` en `js/app.js` (líneas 474–518): `<div class="drilldown-session-card">` + `renderSessionMetaHTML(...)` + `.drilldown-session-stats` (Mejor / Ritmo) + `.drilldown-session-chart` con `renderBoxplotSVG(splitsSeconds, { baseline, width: 440, height: 75, globalMin, globalMax })`.
+
+`bindSessionCardActions(containerEl, sessions, handlers)`:
+- Arma un `Map` de `getSessionKey(s)` → `s`.
+- **`.btn-session-tag` click** (`preventDefault` + `stopPropagation`): busca el `.session-title[data-session-key=KEY]`, guarda su `innerHTML` original y lo reemplaza por `<input type="text" class="session-tag-input" maxlength="60" placeholder="Ej: 4x100 libre, técnica brazada" value="${escapeHtml(getSessionTag(session))}">`, y después hace `focus()` y `select()` si existen.
+  - `keydown` Enter → `commit()`; Escape → restaurar el `innerHTML` original (cancelar).
+  - `blur` → `commit()`.
+  - `commit()` tiene un guard `let done = false` para que Enter seguido de blur no guarde dos veces. Llama `await handlers.onTag(session, normalizeSessionTag(input.value))`. El caller se encarga de re-renderizar.
+- **`.btn-session-delete` click:** `window.confirm(\`¿Borrar la sesión del ${dateLabel} (${n} pases)? Esta acción no se puede deshacer.\`)` → si se confirma, `await handlers.onDelete(session)`.
+
+Tests (`session_card.test.js`; copiar el mock de DOM que ya usa `metrics_modal.test.js`):
+- La tarjeta empieza con `<div class="drilldown-session-card">`, contiene `2 pases`, `btn-session-tag`, `btn-session-delete` y la etiqueta escapada (`<b>` → `&lt;b&gt;`).
+- Sin etiqueta no se renderiza `.session-tag`.
+- Click en el tacho con `window.confirm = () => true` → se llama `onDelete` con la sesión correcta; con `false` → no se llama.
+- Click en el lápiz → aparece `.session-tag-input`; simular `keydown` Enter con valor `' 8x50 '` → `onTag(session, '8x50')` se llama **una sola vez**, aunque después llegue un `blur`. Si el mock no soporta `focus`/eventos de input, extenderlo de forma mínima en el propio test.
+
+**Verificación:** `node --test tests/unit/session_card.test.js tests/unit/boxplot.test.js`
 
 ---
 
-## Paso 5: Service Worker Network-First (`sw.js`) y Verificación End-to-End
+## Paso 3: Drill-down de Estadísticas Globales con etiqueta y borrado + `SwimmerCard.handleSessionDeleted`
 
-### Objetivo
-Evitar que el Service Worker sirva archivos JS obsoletos desde la caché (`swimcoach-v6`) cambiando a una estrategia **Network-First con fallback a caché offline**, e incluyendo todos los módulos actuales en el precaché.
+**Archivos:** `js/app.js`, `js/ui/swimmer-card.js`, `tests/unit/feature4_drilldown.test.js`, `tests/unit/swimmer_card.test.js`
 
-### Archivos a inspeccionar y modificar
-- `sw.js`
+1. `swimmer-card.js`, nuevo método (agregar el bind en el constructor, junto a los demás):
+   ```js
+   async handleSessionDeleted(lapIds) {
+     const ids = new Set(lapIds || []);
+     if (!this.laps.some(l => ids.has(l.id))) return false;
+     await this.handleReset();   // sin clearHistorical: los pases ya fueron borrados
+     return true;
+   }
+   ```
+2. `app.js` → `showSwimmerDrillDown`: reemplazar el map de `recentSessions` (líneas 474–518) por
+   `renderSessionCardHTML(session, { fallbackLabel: \`Sesión ${sessions.length - sIdx}\`, baseline: baselineVal, globalMin, globalMax })`.
+   Después de asignar `contentEl.innerHTML`, llamar a:
+   ```js
+   bindSessionCardActions(contentEl, recentSessions, {
+     onTag: async (session, tag) => {
+       await repository.updateLapsTag(session.map(l => l.id), tag);
+       await this.showSwimmerDrillDown(swimmerId);
+     },
+     onDelete: async (session) => {
+       const ids = session.map(l => l.id);
+       await repository.deleteLaps(ids);
+       const card = this.cards.get(swimmerId);
+       if (card) await card.handleSessionDeleted(ids);
+       await this.showSwimmerDrillDown(swimmerId);
+     }
+   });
+   ```
+   Reemplazar `this._escapeHtml` por el `escapeHtml` importado. `_escapeHtml` se puede dejar delegando al import para no romper el bind del constructor.
+3. Tests:
+   - `TC-DD-408`: 2 sesiones guardadas → `showSwimmerDrillDown` → click en el lápiz de la primera tarjeta + Enter con `'Técnica'` → todos los pases de esa sesión en el repo tienen `sessionTag === 'Técnica'` y el HTML re-renderizado incluye `<span class="session-tag">Técnica</span>`.
+   - `TC-DD-409`: con `confirm → true`, click en el tacho de una sesión → el repo pierde solo esos pases y se renderiza 1 `.drilldown-session-card`.
+   - `TC-SC-213` (`swimmer_card.test.js`): `handleSessionDeleted` con ids de `card.laps` → estado `IDLE` y `laps = []`; con ids ajenos → devuelve `false` y no cambia nada.
 
-### Especificación Técnica e Instrucciones de Razonamiento
-1. En `sw.js`:
-   - Actualiza `const CACHE_NAME = 'swimcoach-v7';`.
-   - En `PRECACHE_URLS`, asegúrate de que estén incluidos todos los módulos JS del proyecto, incluyendo:
-     - `'./js/analytics/session-partitioner.js'`
-     - `'./js/telemetry/telemetry.js'`
-   - En el listener `self.addEventListener('fetch', ...)`:
-     - Invierte el orden actual (que era *Cache-First*) a **Network-First**:
-       1. Intenta primero `const networkResponse = await fetch(event.request);`.
-       2. Si `networkResponse && networkResponse.status === 200`, guarda una copia (`networkResponse.clone()`) en `caches.open(CACHE_NAME)` y devuelve `networkResponse`.
-       3. Si `fetch` lanza error (dispositivo sin conexión en la pileta) o falla: busca en caché con `const cachedResponse = await caches.match(event.request);` y si existe devuélvela; si es una petición `navigate`, devuelve el fallback `await caches.match('./index.html') || await caches.match('/')`.
-2. Ejecuta la suite completa de tests unitarios y el verificador de aceptación para confirmar que los 5 pasos funcionan en conjunto sin regresiones.
+**Verificación:** `node --test tests/unit/feature4_drilldown.test.js tests/unit/challenger_m2_empirical.test.js tests/unit/swimmer_card.test.js`
 
-### Comando de Verificación del Paso 5
-```bash
-npm test && npm run verify
+---
+
+## Paso 4: Lupa (Métricas Individuales) con etiqueta y borrado por sesión
+
+**Archivos:** `js/ui/metrics-modal.js`, `js/ui/swimmer-card.js`, `tests/unit/metrics_modal.test.js`
+
+1. `_renderBody`:
+   - **Series Anteriores:** usar `renderSessionCardHTML(session, { fallbackLabel: \`Serie ${previousSessions.length - pIdx}\`, baseline, globalMin, globalMax })` (se va todo el bloque duplicado de las líneas 301–344).
+   - **Serie actual:** si `currentSession.length > 0`, anteponer a `metricsHTML`:
+     ```html
+     <div class="modal-section-title">Serie actual</div>
+     <div class="current-session-meta">${renderSessionMetaHTML(currentSession, { fallbackLabel: 'Serie actual' })}</div>
+     ```
+   - Después de asignar `innerHTML`, llamar a `bindSessionCardActions(this.bodyEl, [currentSession, ...previousSessions].filter(s => s.length), { onTag, onDelete })`:
+     - `onTag(session, tag)`: `await repository.updateLapsTag(ids, tag)`; en `this.laps`, poner o quitar `sessionTag` en los pases con esos ids; `this._renderBody(this.swimmer, this.laps)`.
+     - `onDelete(session)`: `await repository.deleteLaps(ids)`; `this.laps = this.laps.filter(l => !ids.has(l.id))`; `await this.callbacks.onDeleteSession?.(ids)`; re-render.
+   - Renombrar el texto del botón `#metrics-reset-session` a **"Borrar todo el historial"** y su confirm a `¿Borrar TODO el historial de pases de ${swimmerName}? …`.
+2. `swimmer-card.js` → callbacks de la Lupa (alrededor de la línea 264), agregar:
+   ```js
+   onDeleteSession: async (ids) => {
+     const set = new Set(ids);
+     allLaps = allLaps.filter(l => !set.has(l.id));
+     await this.handleSessionDeleted(ids);
+   },
+   ```
+3. Invariantes: `TC-MM-301`..`309` siguen en verde (texto `"Sin pases registrados aún."`, `Series Anteriores (N)`, `.btn-lap-delete`, `#metrics-modal-reset`).
+4. Tests nuevos:
+   - `TC-MM-310`: con 2 series, etiquetar la serie actual desde `.current-session-meta .btn-session-tag` → `this.laps` y el repo tienen el tag, y el HTML muestra `.session-tag`.
+   - `TC-MM-311`: borrar una serie anterior con su tacho → desaparece `Series Anteriores` y `onDeleteSession` recibe sus ids.
+
+**Verificación:** `node --test tests/unit/metrics_modal.test.js tests/unit/swimmer_card.test.js`
+
+---
+
+## Paso 5: Builders puros del CSV (`js/analytics/csv-export.js`)
+
+**Archivos:** [NEW] `js/analytics/csv-export.js`, [NEW] `tests/unit/csv_export.test.js`
+
+Entrada: `entries = [{ swimmer, laps }]`. Todo es puro y sin DOM.
+
+```js
+export function secondsEs(ms)        // (ms/1000).toFixed(2).replace('.', ',')      63956 → "63,96"
+export function localDate(ts)        // YYYY-MM-DD con getters locales (getFullYear/getMonth/getDate)
+export function localTime(ts, withSeconds = false) // HH:MM o HH:MM:SS local
+export function buildSummaryRows(entries)  // → Array<Array<string|number>> incluyendo header
+export function buildDetailRows(entries)
+export function rowsToCsv(rows)      // BOM + ';' + '\r\n' + el csvEscape actual de app.js (movido aquí)
 ```
+
+Los tiempos legibles se formatean con `formatTime` de `../timing/timer-engine.js` (`mm:ss.cc`).
+
+**Resumen** (1 fila por sesión; sesiones vía `partitionLapsIntoSessions`):
+`Fecha;Hora inicio;Carril;Nadador;Etiqueta;Pases;Total;Total (s);Mejor;Mejor (s);Promedio;Promedio (s);Pase 1..Pase N`
+- `Total` = suma de los `splitDurationMs` de la sesión. `Promedio` = Total / pases (redondeado en ms).
+- `N` = el `lapNumber` máximo entre todas las sesiones exportadas. La columna `Pase k` toma el pase con `lapNumber === k`. Si falta, la celda queda vacía (así se respetan los huecos que dejan los pases borrados).
+- Filas ordenadas por `timestamp` del primer pase ↑, luego carril ↑, luego nombre.
+- Los nadadores sin pases no generan fila.
+
+**Detallado** (1 fila por pase):
+`Fecha;Hora inicio;Hora pase;Carril;Nadador;Etiqueta;Pase;Parcial;Parcial (s);Acumulado;Acumulado (s)`
+- `Etiqueta` = `getSessionTag(session)` (la etiqueta de la sesión, no la de cada pase). El orden es el mismo que en el resumen y, dentro de cada sesión, por `lapNumber`.
+
+Tests (con timestamps construidos con `new Date(2026, 9, 16, 21, 2, 49).getTime()` para que no dependan de la zona horaria; los valores salen del CSV real):
+- 2 nadadores (`'Juan Pérez'` carril 1, `'Ana'` carril 2), sesión 1 de Juan etiquetada `'4x100 libre'` con splits `63956, 62907`.
+- Resumen: header correcto; fila `['2026-10-16','21:02',1,'Juan Pérez','4x100 libre',2,'02:06.86','126,86','01:02.91','62,91','01:03.43','63,43','01:03.96','01:02.91']`.
+- Un hueco por pase borrado (`lapNumber` 1 y 3) deja la celda `Pase 2` en `''`.
+- Detallado: 1 fila por pase, sin columnas `Estado`, `Tiempo actual` ni `ID Nadador`.
+- `rowsToCsv` empieza con `\uFEFF`, separa con `;` y escapa `"` y fórmulas (`=SUM` → `'=SUM`).
+
+**Verificación:** `node --test tests/unit/csv_export.test.js`
+
+---
+
+## Paso 6: `app.js`: dos botones CSV y sin columna Estado
+
+**Archivos:** `js/app.js`, `tests/unit/feature4_drilldown.test.js` (o un archivo nuevo `tests/unit/global_stats.test.js`)
+
+1. En `_renderGlobalStatsView`:
+   - Reemplazar el botón único por:
+     ```html
+     <button type="button" id="btn-export-csv-summary" class="btn-secondary">CSV resumen (por sesión)</button>
+     <button type="button" id="btn-export-csv-detail" class="btn-secondary">CSV detallado (por pase)</button>
+     ```
+     y conectarlos a `this.exportCsv('summary')` y `this.exportCsv('detail')`.
+   - Quitar `<th>Estado</th>`, la `<td>` del `status-indicator` y cambiar `colspan="6"` por `colspan="5"`.
+2. Reescribir `exportCsv(mode = 'summary')`:
+   - Arma `entries` como ahora (`repository.getLaps` con fallback a `card.laps` si la DB tiene menos pases).
+   - `rows = mode === 'detail' ? buildDetailRows(entries) : buildSummaryRows(entries)`; `csv = rowsToCsv(rows)`.
+   - Nombre del archivo: `swimcoach-${mode === 'detail' ? 'detalle' : 'resumen'}-${localDate(Date.now())}.csv`.
+   - Quedan sin usar `TIMER_STATE_LABELS_ES` y `timerEngine.getElapsedMs` en el export: eliminar la constante si ya no se usa en ningún lado.
+3. Test: `showGlobalStats()` → el HTML no contiene `<th>Estado</th>`, contiene los dos ids de botón, y la fila vacía usa `colspan="5"`.
+
+**Verificación:** `node --test tests/unit/feature4_drilldown.test.js tests/unit/challenger_m2_empirical.test.js && node tests/verify_spanish.js`
+
+---
+
+## Paso 7: Estilos, Service Worker y validación end-to-end
+
+**Archivos:** `css/styles.css`, `sw.js`
+
+1. `styles.css` (usar solo variables que existan en `css/variables.css`):
+   - `.session-title { display:flex; align-items:center; gap:var(--space-2); min-width:0; }`
+   - `.session-meta-right { display:flex; align-items:center; gap:var(--space-2); }`
+   - `.session-tag`: pill (padding 2px 8px, `border-radius:999px`, fondo de acento suave, `max-width:180px`, `overflow:hidden; text-overflow:ellipsis; white-space:nowrap`).
+   - `.btn-session-tag, .btn-session-delete`: misma base que `.btn-lap-delete` (28×28). En hover, el tacho toma el color de peligro y el lápiz el de acento.
+   - `.session-tag-input`: alto 28px, `font-size: var(--font-xs)`, borde `var(--border-default)`, `flex:1; min-width:120px`.
+   - `.current-session-meta`: mismo fondo y borde que `.drilldown-session-card`, con padding `var(--space-2)`.
+   - Target táctil ≥ 28px (uso en la pileta con el teléfono).
+   - **Corrección de altura de la tabla de pases en el modal individual (`#metrics-modal`):**
+     - Como `.modal-body` tiene `display: flex; flex-direction: column; overflow-y: auto`, los hijos con `overflow-y: auto` (`.laps-table-wrapper` y `.drilldown-sessions-stack`) tienen `flex-shrink: 1` y `min-height: 0` implícito, por lo que al aparecer `Series Anteriores` flexbox comprime `.laps-table-wrapper` a ~1 fila visible.
+     - Agregar `flex-shrink: 0;` a `.modal-body > *` (evita que flexbox aplaste hijos dentro del contenedor scrolleable).
+     - En `.laps-table-wrapper`: subir `max-height` de `180px` a `260px` y añadir `flex-shrink: 0;`.
+     - En `#metrics-modal-body .drilldown-sessions-stack`: usar `max-height: none; overflow-y: visible;` para que el scroll vertical principal sea el de `#metrics-modal-body` y no queden dos áreas de scroll pequeñas compitiendo.
+2. `sw.js`: `CACHE_NAME = 'swimcoach-v8'`; agregar `'./js/ui/session-card.js'` y `'./js/analytics/csv-export.js'` a `PRECACHE_URLS`.
+3. Correr la suite completa. No puede quedar ningún fail ni skip; la base de partida son 170 tests en verde y ahora deben ser más.
+
+**Verificación:** `npm test && npm run verify && node tests/verify_spanish.js`
+
+### Verificación manual (usuario)
+1. `npx serve .` (o el servidor habitual) → crear 2–3 nadadores, hacer 2 series.
+2. Lupa → **Serie actual**: lápiz → escribir "4x100 libre" → Enter → aparece la pill. Recargar la página: la etiqueta persiste.
+3. Series Anteriores → tacho → confirmar → la tarjeta desaparece. Si era la serie activa, el reloj vuelve a `00:00.00`.
+4. Estadísticas Globales → nombre del nadador → mismo lápiz y tacho en cada boxplot.
+5. La tabla ya no tiene columna Estado. Descargar los dos CSV y abrirlos en Excel/LibreOffice (locale ES): `Total (s)` suma como número y la etiqueta aparece en la columna `Etiqueta`.
