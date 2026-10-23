@@ -358,6 +358,29 @@ export class SwimmerCard {
     if (this.callbacks.onTimerChange) this.callbacks.onTimerChange(this.swimmer.id, this.timerState);
   }
 
+  /**
+   * Guarda el tramo pendiente como pase (también si está PAUSADO) y detiene.
+   * Usado por "Nueva serie" para no perder tiempo sin registrar.
+   */
+  async saveAndStop() {
+    const state = this.timerState.state;
+    if (state === TIMER_STATES.PAUSED) {
+      const pendingMs = timerEngine.getElapsedMs(this.timerState) - (Number(this.timerState.lastLapCumulativeMs) || 0);
+      if (pendingMs >= 10) {
+        try {
+          const { lap, state: newState } = await timerEngine.recordLap(this.swimmer.id);
+          this.timerState = newState;
+          this.laps.push(lap);
+        } catch (err) {
+          console.warn(`[SwimmerCard] Error al guardar tramo pendiente para ${this.swimmer.id}:`, err);
+        }
+      }
+    }
+    if (state === TIMER_STATES.RUNNING || state === TIMER_STATES.PAUSED) {
+      await this.handleStop();
+    }
+  }
+
   async handleReset(options = {}) {
     this.timerState = await timerEngine.reset(this.swimmer.id);
     ticker.unsubscribe(`swimmer-${this.swimmer.id}`);

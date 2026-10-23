@@ -11,6 +11,8 @@ import { telemetryService } from './telemetry/telemetry.js';
 import { partitionLapsIntoSessions } from './analytics/session-partitioner.js';
 import { renderSessionCardHTML, bindSessionCardActions, escapeHtml } from './ui/session-card.js';
 import { buildSummaryRows, buildDetailRows, rowsToCsv, localDate } from './analytics/csv-export.js';
+import { classifyForNewSeries, runNewSeries } from './timing/new-series.js';
+import { openNewSeriesDialog, NEW_SERIES_CHOICE } from './ui/new-series-dialog.js';
 
 class AppCoordinator {
   constructor() {
@@ -21,7 +23,7 @@ class AppCoordinator {
 
     this.handleMasterStart = this.handleMasterStart.bind(this);
     this.handleMasterStop = this.handleMasterStop.bind(this);
-    this.handleMasterReset = this.handleMasterReset.bind(this);
+    this.handleNewSeries = this.handleNewSeries.bind(this);
     this.handleSaveSwimmer = this.handleSaveSwimmer.bind(this);
     this.handleDeleteSwimmer = this.handleDeleteSwimmer.bind(this);
     this.showGlobalStats = this.showGlobalStats.bind(this);
@@ -52,14 +54,32 @@ class AppCoordinator {
     // 2. Wire up Header & Global Controls
     const btnStartAll = document.getElementById('btn-master-start');
     const btnStopAll = document.getElementById('btn-master-stop');
-    const btnResetAll = document.getElementById('btn-master-reset');
     const btnAddTrigger = document.getElementById('btn-add-swimmer-trigger');
+    const btnHeaderMenu = document.getElementById('btn-header-menu');
+    const headerMenuEl = document.getElementById('header-menu');
+    const btnNewSeries = document.getElementById('btn-new-series');
     const btnGlobalStats = document.getElementById('btn-global-stats');
     const btnCloseGlobalStats = document.getElementById('global-stats-close-btn');
 
     if (btnStartAll) btnStartAll.addEventListener('click', this.handleMasterStart);
     if (btnStopAll) btnStopAll.addEventListener('click', this.handleMasterStop);
-    if (btnResetAll) btnResetAll.addEventListener('click', this.handleMasterReset);
+    if (btnHeaderMenu && headerMenuEl) {
+      btnHeaderMenu.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._toggleHeaderMenu();
+      });
+      if (typeof document.addEventListener === 'function') {
+        document.addEventListener('click', (e) => {
+          if (!headerMenuEl.hidden && !headerMenuEl.contains(e.target)) this._toggleHeaderMenu(false);
+        });
+      }
+    }
+    if (btnNewSeries) {
+      btnNewSeries.addEventListener('click', () => {
+        this._toggleHeaderMenu(false);
+        this.handleNewSeries();
+      });
+    }
     if (btnAddTrigger) {
       btnAddTrigger.addEventListener('click', () => modalManager.open());
     }
@@ -359,6 +379,7 @@ class AppCoordinator {
   }
 
   _handleKeyDown(e) {
+    if (e.key === 'Escape') this._toggleHeaderMenu(false);
     if (e.key === 'Escape' && this.globalStatsModalEl && this.globalStatsModalEl.classList.contains('open')) {
       this.closeGlobalStats();
     }
@@ -565,18 +586,28 @@ class AppCoordinator {
   }
 
   /**
-   * Master Control: Reset all timers to 00:00.00
+   * Nueva serie: limpia los tableros (timers a 00:00.00) previa confirmación.
+   * Los cronómetros en curso solo se tocan si el usuario lo elige explícitamente,
+   * y en ese caso se guarda su tramo pendiente antes de limpiar. Nunca borra pases guardados.
    */
-  async handleMasterReset() {
-    if (this.cards.size === 0) return;
-    const confirmed = confirm('¿Reiniciar todos los cronómetros de esta serie a cero?');
-    if (!confirmed) return;
+  async handleNewSeries() {
+    const { finished, inProgress } = classifyForNewSeries(this.cards.values());
+    const choice = await openNewSeriesDialog({
+      finishedCount: finished.length,
+      inProgressNames: inProgress.map(c => c.swimmer?.name || 'Sin nombre')
+    });
+    if (choice === NEW_SERIES_CHOICE.CANCEL) return;
+    await runNewSeries(this.cards.values(), { includeInProgress: choice === NEW_SERIES_CHOICE.ALL });
+  }
 
-    const promises = [];
-    for (const card of this.cards.values()) {
-      promises.push(card.handleReset());
-    }
-    await Promise.all(promises);
+  _toggleHeaderMenu(forceOpen) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const menu = document.getElementById('header-menu');
+    const trigger = document.getElementById('btn-header-menu');
+    if (!menu || !trigger) return;
+    const open = typeof forceOpen === 'boolean' ? forceOpen : menu.hidden;
+    menu.hidden = !open;
+    trigger.setAttribute('aria-expanded', String(open));
   }
 
   /**

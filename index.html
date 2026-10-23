@@ -42,6 +42,22 @@
           </svg>
           <span>Añadir</span>
         </button>
+        <div class="header-menu-wrap">
+          <button id="btn-header-menu" class="btn-header-menu" aria-label="Más opciones" aria-haspopup="menu" aria-expanded="false" aria-controls="header-menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+            </svg>
+          </button>
+          <div id="header-menu" class="header-menu" role="menu" hidden>
+            <button id="btn-new-series" class="header-menu-item" role="menuitem">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              <span>Nueva serie</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -144,6 +160,19 @@
       </div>
       <div id="global-stats-content" class="modal-body">
         <!-- Contenido dinámico desde app.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: NUEVA SERIE (LIMPIAR TABLEROS) ===== -->
+  <div id="new-series-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="new-series-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="new-series-title" class="modal-title">Nueva serie</h2>
+      </div>
+      <div class="modal-body">
+        <div id="new-series-body"></div>
+        <div id="new-series-actions" class="new-series-actions"></div>
       </div>
     </div>
   </div>

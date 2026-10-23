@@ -113,6 +113,106 @@ body {
   transform: scale(0.96);
 }
 
+/* Header overflow menu ("⋯"): discreto pero con área táctil completa */
+.header-menu-wrap {
+  position: relative;
+}
+
+.btn-header-menu {
+  width: var(--touch-target-min);
+  height: 40px;
+  margin-right: calc(var(--space-2) * -1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-header-menu:hover,
+.btn-header-menu[aria-expanded="true"] {
+  color: var(--text-primary);
+}
+
+.header-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  min-width: 200px;
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-modal);
+  padding: var(--space-1);
+  z-index: 150;
+}
+
+.header-menu[hidden] {
+  display: none;
+}
+
+.header-menu-item {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.header-menu-item:hover {
+  background-color: var(--bg-surface-highlight);
+}
+
+/* Diálogo "Nueva serie" */
+.new-series-text {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-base);
+}
+
+.new-series-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.new-series-warning {
+  padding: var(--space-3);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--radius-md);
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--text-primary);
+}
+
+.new-series-names {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+.new-series-actions {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-2);
+}
+
+.new-series-actions > button {
+  flex: none;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  font-size: var(--font-sm);
+}
+
 /* Master Controls (Legacy / Optional, hidden per R1) */
 .master-controls {
   display: none !important;

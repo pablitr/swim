@@ -1,7 +1,7 @@
 // Service Worker for SwimCoach Tracker PWA
 // Provides offline capability via Network-First strategy with cache fallback.
 
-const CACHE_NAME = 'swimcoach-v8';
+const CACHE_NAME = 'swimcoach-v9';
 
 const PRECACHE_URLS = [
   './',
@@ -14,6 +14,7 @@ const PRECACHE_URLS = [
   './js/storage/repository.js',
   './js/timing/timer-engine.js',
   './js/timing/ticker.js',
+  './js/timing/new-series.js',
   './js/analytics/zones.js',
   './js/analytics/stats.js',
   './js/analytics/pace-calculator.js',
@@ -25,6 +26,7 @@ const PRECACHE_URLS = [
   './js/ui/session-card.js',
   './js/ui/modal.js',
   './js/ui/metrics-modal.js',
+  './js/ui/new-series-dialog.js',
   './js/app.js',
   './icons/icon.svg',
   './icons/icon-192.svg',
